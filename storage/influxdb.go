@@ -38,7 +38,11 @@ func NewInfluxDBStorage(url, token, org, bucket string) (*InfluxDBStorage, error
 
 	if health.Status != "pass" {
 		client.Close()
-		return nil, fmt.Errorf("InfluxDB health check failed: %s", *health.Message)
+		message := "unknown error"
+		if health.Message != nil {
+			message = *health.Message
+		}
+		return nil, fmt.Errorf("InfluxDB health check failed: %s", message)
 	}
 
 	logger.Info().Str("url", url).Str("status", string(health.Status)).Msg("Connected to InfluxDB")
@@ -62,6 +66,17 @@ func NewInfluxDBStorage(url, token, org, bucket string) (*InfluxDBStorage, error
 
 // WriteReading writes a power reading to InfluxDB
 func (s *InfluxDBStorage) WriteReading(reading *monitoring.PowerReading) error {
+	// Validate input
+	if reading == nil {
+		return fmt.Errorf("reading cannot be nil")
+	}
+	if reading.DeviceID == "" {
+		return fmt.Errorf("device ID cannot be empty")
+	}
+	if reading.Timestamp.IsZero() {
+		return fmt.Errorf("timestamp cannot be zero")
+	}
+
 	p := influxdb2.NewPoint(
 		"power_consumption",
 		map[string]string{
@@ -83,9 +98,13 @@ func (s *InfluxDBStorage) WriteReading(reading *monitoring.PowerReading) error {
 
 // WriteBatch writes multiple readings efficiently
 func (s *InfluxDBStorage) WriteBatch(readings []*monitoring.PowerReading) error {
-	for _, reading := range readings {
+	if readings == nil {
+		return fmt.Errorf("readings slice cannot be nil")
+	}
+
+	for i, reading := range readings {
 		if err := s.WriteReading(reading); err != nil {
-			return err
+			return fmt.Errorf("failed to write reading at index %d: %w", i, err)
 		}
 	}
 	return nil
@@ -105,6 +124,11 @@ func (s *InfluxDBStorage) Close() {
 
 // QueryLatestReading retrieves the most recent power reading for a device
 func (s *InfluxDBStorage) QueryLatestReading(ctx context.Context, deviceID string) (*monitoring.PowerReading, error) {
+	// Validate input
+	if deviceID == "" {
+		return nil, fmt.Errorf("device ID cannot be empty")
+	}
+
 	queryAPI := s.client.QueryAPI(s.org)
 
 	query := fmt.Sprintf(`

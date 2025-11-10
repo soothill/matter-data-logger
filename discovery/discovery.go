@@ -40,8 +40,10 @@ func (d *Device) HasPowerMeasurement() bool {
 
 // GetDeviceID returns a unique identifier for the device
 func (d *Device) GetDeviceID() string {
-	if id, ok := d.TXTRecord["D"]; ok {
-		return id
+	if d.TXTRecord != nil {
+		if id, ok := d.TXTRecord["D"]; ok && id != "" {
+			return id
+		}
 	}
 	return fmt.Sprintf("%s:%d", d.Address.String(), d.Port)
 }
@@ -105,6 +107,11 @@ func (s *Scanner) Discover(ctx context.Context, timeout time.Duration) ([]*Devic
 
 // parseServiceEntry converts a zeroconf service entry to a Device
 func (s *Scanner) parseServiceEntry(entry *zeroconf.ServiceEntry) *Device {
+	// Validate entry
+	if entry == nil {
+		return nil
+	}
+
 	if len(entry.AddrIPv4) == 0 && len(entry.AddrIPv6) == 0 {
 		return nil
 	}

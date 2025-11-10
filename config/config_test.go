@@ -206,3 +206,299 @@ func TestGetEnvAsIntOrDefault(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_FileNotFound(t *testing.T) {
+	_, err := Load("nonexistent-config.yaml")
+	if err == nil {
+		t.Error("Load() should fail when file doesn't exist")
+	}
+}
+
+func TestLoad_InvalidYAML(t *testing.T) {
+	// Create a temporary invalid YAML file
+	tmpfile, err := os.CreateTemp("", "invalid-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	content := []byte("invalid: yaml: content:\n  - missing\n  closing")
+	if _, err := tmpfile.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	tmpfile.Close()
+
+	_, err = Load(tmpfile.Name())
+	if err == nil {
+		t.Error("Load() should fail with invalid YAML")
+	}
+}
+
+func TestLoad_ValidFile(t *testing.T) {
+	// Create a temporary valid config file
+	tmpfile, err := os.CreateTemp("", "config-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	content := []byte(`influxdb:
+  url: "http://localhost:8086"
+  token: "test-token"
+  organization: "test-org"
+  bucket: "test-bucket"
+matter:
+  discovery_interval: 5m
+  poll_interval: 30s
+logging:
+  level: "info"
+`)
+	if _, err := tmpfile.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	tmpfile.Close()
+
+	cfg, err := Load(tmpfile.Name())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.InfluxDB.URL != "http://localhost:8086" {
+		t.Errorf("InfluxDB.URL = %v, want http://localhost:8086", cfg.InfluxDB.URL)
+	}
+	if cfg.InfluxDB.Token != "test-token" {
+		t.Errorf("InfluxDB.Token = %v, want test-token", cfg.InfluxDB.Token)
+	}
+	if cfg.Matter.DiscoveryInterval != 5*time.Minute {
+		t.Errorf("Matter.DiscoveryInterval = %v, want 5m", cfg.Matter.DiscoveryInterval)
+	}
+	if cfg.Matter.PollInterval != 30*time.Second {
+		t.Errorf("Matter.PollInterval = %v, want 30s", cfg.Matter.PollInterval)
+	}
+}
+
+func TestLoad_EnvironmentOverrides(t *testing.T) {
+	// Create a temporary config file
+	tmpfile, err := os.CreateTemp("", "config-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	content := []byte(`influxdb:
+  url: "http://localhost:8086"
+  token: "file-token"
+  organization: "file-org"
+  bucket: "file-bucket"
+matter:
+  discovery_interval: 5m
+  poll_interval: 30s
+logging:
+  level: "info"
+`)
+	if _, err := tmpfile.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	tmpfile.Close()
+
+	// Set environment variables to override
+	os.Setenv("INFLUXDB_URL", "http://env-host:8086")
+	os.Setenv("INFLUXDB_TOKEN", "env-token")
+	os.Setenv("INFLUXDB_ORG", "env-org")
+	os.Setenv("INFLUXDB_BUCKET", "env-bucket")
+	os.Setenv("LOG_LEVEL", "debug")
+	os.Setenv("MATTER_DISCOVERY_INTERVAL", "10m")
+	os.Setenv("MATTER_POLL_INTERVAL", "1m")
+
+	defer func() {
+		os.Unsetenv("INFLUXDB_URL")
+		os.Unsetenv("INFLUXDB_TOKEN")
+		os.Unsetenv("INFLUXDB_ORG")
+		os.Unsetenv("INFLUXDB_BUCKET")
+		os.Unsetenv("LOG_LEVEL")
+		os.Unsetenv("MATTER_DISCOVERY_INTERVAL")
+		os.Unsetenv("MATTER_POLL_INTERVAL")
+	}()
+
+	cfg, err := Load(tmpfile.Name())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	// Verify environment variables override file values
+	if cfg.InfluxDB.URL != "http://env-host:8086" {
+		t.Errorf("InfluxDB.URL = %v, want http://env-host:8086", cfg.InfluxDB.URL)
+	}
+	if cfg.InfluxDB.Token != "env-token" {
+		t.Errorf("InfluxDB.Token = %v, want env-token", cfg.InfluxDB.Token)
+	}
+	if cfg.InfluxDB.Organization != "env-org" {
+		t.Errorf("InfluxDB.Organization = %v, want env-org", cfg.InfluxDB.Organization)
+	}
+	if cfg.InfluxDB.Bucket != "env-bucket" {
+		t.Errorf("InfluxDB.Bucket = %v, want env-bucket", cfg.InfluxDB.Bucket)
+	}
+	if cfg.Logging.Level != "debug" {
+		t.Errorf("Logging.Level = %v, want debug", cfg.Logging.Level)
+	}
+	if cfg.Matter.DiscoveryInterval != 10*time.Minute {
+		t.Errorf("Matter.DiscoveryInterval = %v, want 10m", cfg.Matter.DiscoveryInterval)
+	}
+	if cfg.Matter.PollInterval != 1*time.Minute {
+		t.Errorf("Matter.PollInterval = %v, want 1m", cfg.Matter.PollInterval)
+	}
+}
+
+func TestLoad_Defaults(t *testing.T) {
+	// Create a minimal config file
+	tmpfile, err := os.CreateTemp("", "config-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	content := []byte(`influxdb:
+  url: "http://localhost:8086"
+  token: "test-token"
+  organization: "test-org"
+  bucket: "test-bucket"
+`)
+	if _, err := tmpfile.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	tmpfile.Close()
+
+	cfg, err := Load(tmpfile.Name())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	// Verify defaults are applied
+	if cfg.Matter.DiscoveryInterval != 5*time.Minute {
+		t.Errorf("Default DiscoveryInterval = %v, want 5m", cfg.Matter.DiscoveryInterval)
+	}
+	if cfg.Matter.PollInterval != 30*time.Second {
+		t.Errorf("Default PollInterval = %v, want 30s", cfg.Matter.PollInterval)
+	}
+	if cfg.Matter.ServiceType != "_matter._tcp" {
+		t.Errorf("Default ServiceType = %v, want _matter._tcp", cfg.Matter.ServiceType)
+	}
+	if cfg.Matter.Domain != "local." {
+		t.Errorf("Default Domain = %v, want local.", cfg.Matter.Domain)
+	}
+	if cfg.Logging.Level != "info" {
+		t.Errorf("Default log level = %v, want info", cfg.Logging.Level)
+	}
+}
+
+func TestValidate_MissingFields(t *testing.T) {
+	tests := []struct {
+		name   string
+		config Config
+	}{
+		{
+			name: "missing organization",
+			config: Config{
+				InfluxDB: InfluxDBConfig{
+					URL:    "http://localhost:8086",
+					Token:  "test-token",
+					Bucket: "test-bucket",
+				},
+				Matter: MatterConfig{
+					DiscoveryInterval: 5 * time.Minute,
+					PollInterval:      30 * time.Second,
+				},
+				Logging: LoggingConfig{Level: "info"},
+			},
+		},
+		{
+			name: "missing bucket",
+			config: Config{
+				InfluxDB: InfluxDBConfig{
+					URL:          "http://localhost:8086",
+					Token:        "test-token",
+					Organization: "test-org",
+				},
+				Matter: MatterConfig{
+					DiscoveryInterval: 5 * time.Minute,
+					PollInterval:      30 * time.Second,
+				},
+				Logging: LoggingConfig{Level: "info"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.Validate()
+			if err == nil {
+				t.Error("Validate() should fail for missing required fields")
+			}
+		})
+	}
+}
+
+func TestValidate_InvalidIntervals(t *testing.T) {
+	tests := []struct {
+		name   string
+		config Config
+	}{
+		{
+			name: "discovery_interval less than poll_interval",
+			config: Config{
+				InfluxDB: InfluxDBConfig{
+					URL:          "http://localhost:8086",
+					Token:        "test-token",
+					Organization: "test-org",
+					Bucket:       "test-bucket",
+				},
+				Matter: MatterConfig{
+					DiscoveryInterval: 30 * time.Second,
+					PollInterval:      1 * time.Minute,
+				},
+				Logging: LoggingConfig{Level: "info"},
+			},
+		},
+		{
+			name: "zero discovery_interval",
+			config: Config{
+				InfluxDB: InfluxDBConfig{
+					URL:          "http://localhost:8086",
+					Token:        "test-token",
+					Organization: "test-org",
+					Bucket:       "test-bucket",
+				},
+				Matter: MatterConfig{
+					DiscoveryInterval: 0,
+					PollInterval:      30 * time.Second,
+				},
+				Logging: LoggingConfig{Level: "info"},
+			},
+		},
+		{
+			name: "zero poll_interval",
+			config: Config{
+				InfluxDB: InfluxDBConfig{
+					URL:          "http://localhost:8086",
+					Token:        "test-token",
+					Organization: "test-org",
+					Bucket:       "test-bucket",
+				},
+				Matter: MatterConfig{
+					DiscoveryInterval: 5 * time.Minute,
+					PollInterval:      0,
+				},
+				Logging: LoggingConfig{Level: "info"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.Validate()
+			if err == nil {
+				t.Error("Validate() should fail for invalid intervals")
+			}
+		})
+	}
+}
