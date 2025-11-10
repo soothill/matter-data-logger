@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Darren Soothill
 // Licensed under the MIT License
 
+// Package metrics provides Prometheus metrics for the Matter data logger.
 package metrics
 
 import (

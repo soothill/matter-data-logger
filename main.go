@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Darren Soothill
 // Licensed under the MIT License
 
+// Matter Power Data Logger discovers Matter devices and logs their power consumption.
 package main
 
 import (
@@ -175,16 +176,16 @@ func main() {
 }
 
 // healthCheckHandler handles health check requests
-func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
+func healthCheckHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	_, _ = w.Write([]byte("OK"))
 }
 
 // readinessCheckHandler handles readiness check requests
-func readinessCheckHandler(w http.ResponseWriter, r *http.Request) {
+func readinessCheckHandler(w http.ResponseWriter, _ *http.Request) {
 	// In production, you might want to check:
 	// - InfluxDB connection
 	// - Active device monitoring
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("READY"))
+	_, _ = w.Write([]byte("READY"))
 }

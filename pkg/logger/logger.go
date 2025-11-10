@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Darren Soothill
 // Licensed under the MIT License
 
+// Package logger provides structured logging using zerolog.
 package logger
 
 import (

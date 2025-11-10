@@ -113,9 +113,9 @@ func TestDevice_HasPowerMeasurement(t *testing.T) {
 
 func TestDevice_GetDeviceID(t *testing.T) {
 	tests := []struct {
-		name      string
-		device    *Device
-		want      string
+		name   string
+		device *Device
+		want   string
 	}{
 		{
 			name: "with discriminator in TXT record",

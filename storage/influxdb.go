@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Darren Soothill
 // Licensed under the MIT License
 
+// Package storage provides InfluxDB storage for power consumption data.
 package storage
 
 import (
@@ -143,7 +144,9 @@ func (s *InfluxDBStorage) QueryLatestReading(ctx context.Context, deviceID strin
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
-	defer result.Close()
+	defer func() {
+		_ = result.Close()
+	}()
 
 	reading := &monitoring.PowerReading{
 		DeviceID: deviceID,

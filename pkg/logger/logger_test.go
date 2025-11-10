@@ -100,10 +100,10 @@ func TestLogFunctions(t *testing.T) {
 	SetOutput(&buf)
 
 	tests := []struct {
-		name     string
-		logFunc  func() *zerolog.Event
-		message  string
-		level    string
+		name    string
+		logFunc func() *zerolog.Event
+		message string
+		level   string
 	}{
 		{"debug", Debug, "debug message", "debug"},
 		{"info", Info, "info message", "info"},
@@ -170,10 +170,10 @@ func TestSetOutput(t *testing.T) {
 
 func TestLogLevelFiltering(t *testing.T) {
 	tests := []struct {
-		name         string
-		configLevel  string
-		logLevel     string
-		shouldLog    bool
+		name        string
+		configLevel string
+		logLevel    string
+		shouldLog   bool
 	}{
 		{"info logs at info level", "info", "info", true},
 		{"debug filtered at info level", "info", "debug", false},

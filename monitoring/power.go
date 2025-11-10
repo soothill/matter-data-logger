@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Darren Soothill
 // Licensed under the MIT License
 
+// Package monitoring provides power consumption monitoring for Matter devices.
 package monitoring
 
 import (
@@ -15,21 +16,21 @@ import (
 
 // PowerReading represents a power consumption measurement
 type PowerReading struct {
-	DeviceID    string
-	DeviceName  string
-	Timestamp   time.Time
-	Power       float64 // Power in watts
-	Voltage     float64 // Voltage in volts
-	Current     float64 // Current in amperes
-	Energy      float64 // Cumulative energy in kWh
+	DeviceID   string
+	DeviceName string
+	Timestamp  time.Time
+	Power      float64 // Power in watts
+	Voltage    float64 // Voltage in volts
+	Current    float64 // Current in amperes
+	Energy     float64 // Cumulative energy in kWh
 }
 
 // PowerMonitor handles power consumption monitoring
 type PowerMonitor struct {
-	pollInterval      time.Duration
-	readings          chan *PowerReading
-	monitoredDevices  map[string]context.CancelFunc
-	deviceMutex       sync.RWMutex
+	pollInterval     time.Duration
+	readings         chan *PowerReading
+	monitoredDevices map[string]context.CancelFunc
+	deviceMutex      sync.RWMutex
 }
 
 // NewPowerMonitor creates a new power monitor
@@ -163,7 +164,7 @@ func (pm *PowerMonitor) readPower(device *discovery.Device) (*PowerReading, erro
 	// - RMSVoltage (0x0505): unsigned 16-bit, in volts
 	// - RMSCurrent (0x0508): unsigned 16-bit, in milliamps
 
-	baseLoad := 10.0 + rand.Float64()*90.0  // 10-100W base load
+	baseLoad := 10.0 + rand.Float64()*90.0     // 10-100W base load
 	variation := (rand.Float64() - 0.5) * 10.0 // ±5W variation
 	power := baseLoad + variation
 
