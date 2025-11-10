@@ -1,14 +1,17 @@
+// Copyright (c) 2025 Darren Soothill
+// Licensed under the MIT License
+
 package storage
 
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/soothill/matter-data-logger/monitoring"
+	"github.com/soothill/matter-data-logger/pkg/logger"
 )
 
 // InfluxDBStorage handles writing power data to InfluxDB
@@ -35,17 +38,21 @@ func NewInfluxDBStorage(url, token, org, bucket string) (*InfluxDBStorage, error
 
 	if health.Status != "pass" {
 		client.Close()
-		return nil, fmt.Errorf("InfluxDB health check failed: %s", health.Message)
+		message := "unknown error"
+		if health.Message != nil {
+			message = *health.Message
+		}
+		return nil, fmt.Errorf("InfluxDB health check failed: %s", message)
 	}
 
-	log.Printf("Connected to InfluxDB at %s (status: %s)", url, health.Status)
+	logger.Info().Str("url", url).Str("status", string(health.Status)).Msg("Connected to InfluxDB")
 
 	writeAPI := client.WriteAPI(org, bucket)
 
 	// Handle async write errors
 	go func() {
 		for err := range writeAPI.Errors() {
-			log.Printf("InfluxDB write error: %v", err)
+			logger.Error().Err(err).Msg("InfluxDB write error")
 		}
 	}()
 
@@ -59,6 +66,17 @@ func NewInfluxDBStorage(url, token, org, bucket string) (*InfluxDBStorage, error
 
 // WriteReading writes a power reading to InfluxDB
 func (s *InfluxDBStorage) WriteReading(reading *monitoring.PowerReading) error {
+	// Validate input
+	if reading == nil {
+		return fmt.Errorf("reading cannot be nil")
+	}
+	if reading.DeviceID == "" {
+		return fmt.Errorf("device ID cannot be empty")
+	}
+	if reading.Timestamp.IsZero() {
+		return fmt.Errorf("timestamp cannot be zero")
+	}
+
 	p := influxdb2.NewPoint(
 		"power_consumption",
 		map[string]string{
@@ -80,9 +98,13 @@ func (s *InfluxDBStorage) WriteReading(reading *monitoring.PowerReading) error {
 
 // WriteBatch writes multiple readings efficiently
 func (s *InfluxDBStorage) WriteBatch(readings []*monitoring.PowerReading) error {
-	for _, reading := range readings {
+	if readings == nil {
+		return fmt.Errorf("readings slice cannot be nil")
+	}
+
+	for i, reading := range readings {
 		if err := s.WriteReading(reading); err != nil {
-			return err
+			return fmt.Errorf("failed to write reading at index %d: %w", i, err)
 		}
 	}
 	return nil
@@ -95,13 +117,18 @@ func (s *InfluxDBStorage) Flush() {
 
 // Close closes the InfluxDB client and flushes pending writes
 func (s *InfluxDBStorage) Close() {
-	log.Println("Closing InfluxDB connection...")
+	logger.Info().Msg("Closing InfluxDB connection")
 	s.writeAPI.Flush()
 	s.client.Close()
 }
 
 // QueryLatestReading retrieves the most recent power reading for a device
 func (s *InfluxDBStorage) QueryLatestReading(ctx context.Context, deviceID string) (*monitoring.PowerReading, error) {
+	// Validate input
+	if deviceID == "" {
+		return nil, fmt.Errorf("device ID cannot be empty")
+	}
+
 	queryAPI := s.client.QueryAPI(s.org)
 
 	query := fmt.Sprintf(`

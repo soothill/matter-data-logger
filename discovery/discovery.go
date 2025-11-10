@@ -1,14 +1,17 @@
+// Copyright (c) 2025 Darren Soothill
+// Licensed under the MIT License
+
 package discovery
 
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"strings"
 	"time"
 
 	"github.com/grandcat/zeroconf"
+	"github.com/soothill/matter-data-logger/pkg/logger"
 )
 
 // Device represents a discovered Matter device
@@ -37,8 +40,10 @@ func (d *Device) HasPowerMeasurement() bool {
 
 // GetDeviceID returns a unique identifier for the device
 func (d *Device) GetDeviceID() string {
-	if id, ok := d.TXTRecord["D"]; ok {
-		return id
+	if d.TXTRecord != nil {
+		if id, ok := d.TXTRecord["D"]; ok && id != "" {
+			return id
+		}
 	}
 	return fmt.Sprintf("%s:%d", d.Address.String(), d.Port)
 }
@@ -76,8 +81,13 @@ func (s *Scanner) Discover(ctx context.Context, timeout time.Duration) ([]*Devic
 				deviceID := device.GetDeviceID()
 				s.devices[deviceID] = device
 				discoveredDevices = append(discoveredDevices, device)
-				log.Printf("Discovered Matter device: %s at %s:%d (Power: %v)",
-					device.Name, device.Address, device.Port, device.HasPowerMeasurement())
+				logger.Info().
+					Str("device_id", deviceID).
+					Str("device_name", device.Name).
+					Str("address", device.Address.String()).
+					Int("port", device.Port).
+					Bool("has_power_measurement", device.HasPowerMeasurement()).
+					Msg("Discovered Matter device")
 			}
 		}
 	}()
@@ -97,6 +107,11 @@ func (s *Scanner) Discover(ctx context.Context, timeout time.Duration) ([]*Devic
 
 // parseServiceEntry converts a zeroconf service entry to a Device
 func (s *Scanner) parseServiceEntry(entry *zeroconf.ServiceEntry) *Device {
+	// Validate entry
+	if entry == nil {
+		return nil
+	}
+
 	if len(entry.AddrIPv4) == 0 && len(entry.AddrIPv6) == 0 {
 		return nil
 	}
