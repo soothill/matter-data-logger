@@ -1,14 +1,17 @@
+// Copyright (c) 2025 Darren Soothill
+// Licensed under the MIT License
+
 package storage
 
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/soothill/matter-data-logger/monitoring"
+	"github.com/soothill/matter-data-logger/pkg/logger"
 )
 
 // InfluxDBStorage handles writing power data to InfluxDB
@@ -35,17 +38,17 @@ func NewInfluxDBStorage(url, token, org, bucket string) (*InfluxDBStorage, error
 
 	if health.Status != "pass" {
 		client.Close()
-		return nil, fmt.Errorf("InfluxDB health check failed: %s", health.Message)
+		return nil, fmt.Errorf("InfluxDB health check failed: %s", *health.Message)
 	}
 
-	log.Printf("Connected to InfluxDB at %s (status: %s)", url, health.Status)
+	logger.Info().Str("url", url).Str("status", string(health.Status)).Msg("Connected to InfluxDB")
 
 	writeAPI := client.WriteAPI(org, bucket)
 
 	// Handle async write errors
 	go func() {
 		for err := range writeAPI.Errors() {
-			log.Printf("InfluxDB write error: %v", err)
+			logger.Error().Err(err).Msg("InfluxDB write error")
 		}
 	}()
 
@@ -95,7 +98,7 @@ func (s *InfluxDBStorage) Flush() {
 
 // Close closes the InfluxDB client and flushes pending writes
 func (s *InfluxDBStorage) Close() {
-	log.Println("Closing InfluxDB connection...")
+	logger.Info().Msg("Closing InfluxDB connection")
 	s.writeAPI.Flush()
 	s.client.Close()
 }

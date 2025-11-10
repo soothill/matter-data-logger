@@ -1,14 +1,17 @@
+// Copyright (c) 2025 Darren Soothill
+// Licensed under the MIT License
+
 package discovery
 
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"strings"
 	"time"
 
 	"github.com/grandcat/zeroconf"
+	"github.com/soothill/matter-data-logger/pkg/logger"
 )
 
 // Device represents a discovered Matter device
@@ -76,8 +79,13 @@ func (s *Scanner) Discover(ctx context.Context, timeout time.Duration) ([]*Devic
 				deviceID := device.GetDeviceID()
 				s.devices[deviceID] = device
 				discoveredDevices = append(discoveredDevices, device)
-				log.Printf("Discovered Matter device: %s at %s:%d (Power: %v)",
-					device.Name, device.Address, device.Port, device.HasPowerMeasurement())
+				logger.Info().
+					Str("device_id", deviceID).
+					Str("device_name", device.Name).
+					Str("address", device.Address.String()).
+					Int("port", device.Port).
+					Bool("has_power_measurement", device.HasPowerMeasurement()).
+					Msg("Discovered Matter device")
 			}
 		}
 	}()

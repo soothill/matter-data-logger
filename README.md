@@ -9,6 +9,18 @@ A Go application that discovers Matter devices on your local network, identifies
 - **InfluxDB Integration**: Stores time-series power consumption data in InfluxDB
 - **Configurable Intervals**: Customize discovery and polling frequencies
 - **Graceful Shutdown**: Properly handles shutdown signals and flushes pending data
+- **Production Ready**:
+  - Structured logging with configurable log levels (zerolog)
+  - Prometheus metrics for monitoring
+  - Health and readiness check endpoints
+  - Environment variable support for secrets
+  - Configuration validation
+  - Duplicate device monitoring prevention
+  - Comprehensive unit tests
+  - Multi-platform Docker images
+  - GitHub Actions CI/CD pipeline
+  - Security-hardened Docker container (distroless base)
+  - Docker Compose for easy local deployment
 
 ## Architecture
 
@@ -121,9 +133,60 @@ influxdb:
 matter:
   discovery_interval: 5m
   poll_interval: 30s
+
+logging:
+  level: "info"  # debug, info, warn, error
 ```
 
+**Environment Variables** (recommended for production):
+
+For sensitive configuration like tokens, use environment variables:
+
+```bash
+# Copy the example env file
+cp .env.example .env
+
+# Edit .env with your values
+export INFLUXDB_URL="http://localhost:8086"
+export INFLUXDB_TOKEN="your-token-here"
+export INFLUXDB_ORG="my-org"
+export INFLUXDB_BUCKET="matter-power"
+export LOG_LEVEL="info"
+```
+
+Environment variables override config file values, making it safer for production deployments.
+
 ## Usage
+
+### Using Make (Recommended)
+
+The project includes a Makefile for common tasks:
+
+```bash
+# Build the application
+make build
+
+# Run tests
+make test
+
+# Run linters
+make lint
+
+# Format code
+make fmt
+
+# Build for multiple platforms
+make build-all
+
+# Build and run Docker container
+make docker-run
+
+# Start with docker-compose
+make docker-compose-up
+
+# See all available commands
+make help
+```
 
 ### Run the Application
 
@@ -146,7 +209,24 @@ go build -o matter-data-logger
 
 ### Docker
 
-Build and run with Docker:
+**Using pre-built images from GitHub Container Registry:**
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/soothill/matter-data-logger:latest
+
+# Run with environment variables
+docker run -d \
+  --name matter-data-logger \
+  --network host \
+  -e INFLUXDB_URL=http://localhost:8086 \
+  -e INFLUXDB_TOKEN=your-token \
+  -e INFLUXDB_ORG=my-org \
+  -e INFLUXDB_BUCKET=matter-power \
+  ghcr.io/soothill/matter-data-logger:latest
+```
+
+**Building locally:**
 
 ```bash
 # Build
@@ -159,6 +239,26 @@ docker run -d \
   -v $(pwd)/config.yaml:/app/config.yaml \
   matter-data-logger
 ```
+
+**Using Docker Compose (recommended for development):**
+
+Docker Compose will start InfluxDB, Grafana, and the Matter Data Logger:
+
+```bash
+# Start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f matter-data-logger
+
+# Stop all services
+docker-compose down
+```
+
+Access the services:
+- InfluxDB UI: http://localhost:8086
+- Grafana: http://localhost:3000 (admin/admin)
+- Metrics: http://localhost:9090/metrics
 
 Note: `--network host` is required for mDNS discovery to work.
 
@@ -179,6 +279,46 @@ Power readings are stored in InfluxDB with the following schema:
 - `energy`: Cumulative energy consumption (kWh)
 
 **Timestamp**: Reading timestamp
+
+## Monitoring and Metrics
+
+The application exposes Prometheus metrics and health check endpoints on port 9090 (configurable via `-metrics-port` flag):
+
+### Health Checks
+
+- `GET /health` - Basic health check endpoint
+- `GET /ready` - Readiness check endpoint
+
+### Prometheus Metrics
+
+Access metrics at `http://localhost:9090/metrics`:
+
+**Application Metrics:**
+- `matter_devices_discovered_total` - Total number of Matter devices discovered
+- `matter_power_devices_discovered_total` - Devices with power measurement capability
+- `matter_devices_monitored` - Number of devices currently being monitored
+- `matter_power_readings_total` - Total power readings collected
+- `matter_power_reading_errors_total` - Failed power readings
+- `matter_discovery_duration_seconds` - Device discovery duration histogram
+
+**InfluxDB Metrics:**
+- `matter_influxdb_writes_total` - Total writes to InfluxDB
+- `matter_influxdb_write_errors_total` - Failed InfluxDB writes
+
+**Device Metrics:**
+- `matter_current_power_watts` - Current power consumption per device
+- `matter_current_voltage_volts` - Current voltage per device
+- `matter_current_amperage_amps` - Current amperage per device
+
+### Example Prometheus Query
+
+```promql
+# Average power consumption across all devices
+avg(matter_current_power_watts)
+
+# Power consumption by device
+matter_current_power_watts{device_name="Smart Plug 1"}
+```
 
 ## Querying Data
 
@@ -223,18 +363,48 @@ from(bucket: "matter-power")
 
 ```
 matter-data-logger/
-├── main.go              # Application entry point
+├── main.go                   # Application entry point
 ├── config/
-│   └── config.go        # Configuration management
+│   ├── config.go             # Configuration management
+│   └── config_test.go        # Configuration tests
 ├── discovery/
-│   └── discovery.go     # Matter device discovery
+│   └── discovery.go          # Matter device discovery
 ├── monitoring/
-│   └── power.go         # Power consumption monitoring
+│   ├── power.go              # Power consumption monitoring
+│   └── power_test.go         # Monitoring tests
 ├── storage/
-│   └── influxdb.go      # InfluxDB client and storage
-├── config.yaml          # Configuration file
-└── README.md           # This file
+│   └── influxdb.go           # InfluxDB client and storage
+├── pkg/
+│   ├── logger/               # Structured logging
+│   └── metrics/              # Prometheus metrics
+├── .github/
+│   └── workflows/            # GitHub Actions CI/CD
+│       ├── ci.yml            # Continuous integration
+│       └── release.yml       # Release & Docker publishing
+├── Makefile                  # Build automation
+├── Dockerfile                # Multi-stage Docker build
+├── docker-compose.yml        # Local development stack
+├── config.yaml               # Configuration file
+├── .env.example              # Environment variables template
+└── README.md                 # This file
 ```
+
+### CI/CD Pipeline
+
+The project uses GitHub Actions for continuous integration and deployment:
+
+- **CI Workflow**: Runs on every push and PR
+  - Tests on Go 1.21 and 1.22
+  - Linting with golangci-lint
+  - Multi-platform builds (Linux/AMD64, ARM64, ARMv7, macOS)
+  - Code coverage reporting
+
+- **Release Workflow**: Triggers on new tags/releases
+  - Runs full test suite
+  - Builds multi-platform Docker images
+  - Publishes to GitHub Container Registry (ghcr.io)
+  - Creates release binaries with checksums
+  - Uploads artifacts to GitHub Releases
 
 ### Building
 
