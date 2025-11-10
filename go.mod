@@ -1,6 +1,6 @@
 module github.com/soothill/matter-data-logger
 
-go 1.24.7
+go 1.22
 
 require (
 	github.com/grandcat/zeroconf v1.0.0
