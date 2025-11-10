@@ -104,7 +104,7 @@ jobs:
   build-multiplatform-containers:
     name: Build Multiplatform Containers
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, build, lint]
     permissions:
       contents: read
       packages: write
