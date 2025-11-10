@@ -25,7 +25,13 @@ import (
 func main() {
 	configPath := flag.String("config", "config.yaml", "Path to configuration file")
 	metricsPort := flag.String("metrics-port", "9090", "Port for Prometheus metrics endpoint")
+	healthCheck := flag.Bool("health-check", false, "Perform health check and exit")
 	flag.Parse()
+
+	// If health-check flag is set, perform check and exit
+	if *healthCheck {
+		os.Exit(performHealthCheck())
+	}
 
 	// Load configuration
 	cfg, err := config.Load(*configPath)
@@ -42,18 +48,6 @@ func main() {
 		Dur("poll_interval", cfg.Matter.PollInterval).
 		Msg("Configuration loaded")
 
-	// Start metrics HTTP server
-	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		http.HandleFunc("/health", healthCheckHandler)
-		http.HandleFunc("/ready", readinessCheckHandler)
-
-		logger.Info().Str("port", *metricsPort).Msg("Starting metrics and health check server")
-		if err := http.ListenAndServe(":"+*metricsPort, nil); err != nil {
-			logger.Error().Err(err).Msg("Metrics server failed")
-		}
-	}()
-
 	// Initialize InfluxDB storage
 	db, err := storage.NewInfluxDBStorage(
 		cfg.InfluxDB.URL,
@@ -65,6 +59,20 @@ func main() {
 		logger.Fatal().Err(err).Msg("Failed to initialize InfluxDB")
 	}
 	defer db.Close()
+
+	// Start metrics HTTP server
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		http.HandleFunc("/health", healthCheckHandler)
+		http.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+			readinessCheckHandler(w, r, db)
+		})
+
+		logger.Info().Str("port", *metricsPort).Msg("Starting metrics and health check server")
+		if err := http.ListenAndServe(":"+*metricsPort, nil); err != nil {
+			logger.Error().Err(err).Msg("Metrics server failed")
+		}
+	}()
 
 	// Create device scanner
 	scanner := discovery.NewScanner(cfg.Matter.ServiceType, cfg.Matter.Domain)
@@ -89,16 +97,26 @@ func main() {
 
 	// Start data writer goroutine
 	go func() {
-		for reading := range monitor.Readings() {
-			if err := db.WriteReading(reading); err != nil {
-				logger.Error().Err(err).Str("device_id", reading.DeviceID).
-					Msg("Failed to write reading to InfluxDB")
-				metrics.InfluxDBWriteErrors.Inc()
-			} else {
-				metrics.InfluxDBWritesTotal.Inc()
-				metrics.CurrentPower.WithLabelValues(reading.DeviceID, reading.DeviceName).Set(reading.Power)
-				metrics.CurrentVoltage.WithLabelValues(reading.DeviceID, reading.DeviceName).Set(reading.Voltage)
-				metrics.CurrentCurrent.WithLabelValues(reading.DeviceID, reading.DeviceName).Set(reading.Current)
+		for {
+			select {
+			case <-ctx.Done():
+				logger.Info().Msg("Data writer goroutine shutting down")
+				return
+			case reading, ok := <-monitor.Readings():
+				if !ok {
+					logger.Info().Msg("Readings channel closed, data writer exiting")
+					return
+				}
+				if err := db.WriteReading(reading); err != nil {
+					logger.Error().Err(err).Str("device_id", reading.DeviceID).
+						Msg("Failed to write reading to InfluxDB")
+					metrics.InfluxDBWriteErrors.Inc()
+				} else {
+					metrics.InfluxDBWritesTotal.Inc()
+					metrics.CurrentPower.WithLabelValues(reading.DeviceID, reading.DeviceName).Set(reading.Power)
+					metrics.CurrentVoltage.WithLabelValues(reading.DeviceID, reading.DeviceName).Set(reading.Voltage)
+					metrics.CurrentCurrent.WithLabelValues(reading.DeviceID, reading.DeviceName).Set(reading.Current)
+				}
 			}
 		}
 	}()
@@ -178,14 +196,35 @@ func main() {
 // healthCheckHandler handles health check requests
 func healthCheckHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("OK"))
+	if _, err := w.Write([]byte("OK")); err != nil {
+		logger.Error().Err(err).Msg("Failed to write health check response")
+	}
 }
 
 // readinessCheckHandler handles readiness check requests
-func readinessCheckHandler(w http.ResponseWriter, _ *http.Request) {
-	// In production, you might want to check:
-	// - InfluxDB connection
-	// - Active device monitoring
+func readinessCheckHandler(w http.ResponseWriter, _ *http.Request, db *storage.InfluxDBStorage) {
+	// Check InfluxDB connection
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if err := db.Health(ctx); err != nil {
+		logger.Warn().Err(err).Msg("Readiness check failed: InfluxDB unhealthy")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		if _, writeErr := w.Write([]byte("NOT READY: InfluxDB unhealthy")); writeErr != nil {
+			logger.Error().Err(writeErr).Msg("Failed to write readiness check response")
+		}
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("READY"))
+	if _, err := w.Write([]byte("READY")); err != nil {
+		logger.Error().Err(err).Msg("Failed to write readiness check response")
+	}
+}
+
+// performHealthCheck performs a health check and returns exit code
+func performHealthCheck() int {
+	// Simple health check for Docker/K8s - just check if we can start
+	// In a more sophisticated implementation, this could check connectivity
+	return 0
 }

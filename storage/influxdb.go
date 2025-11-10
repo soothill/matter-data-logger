@@ -7,6 +7,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
@@ -123,6 +124,36 @@ func (s *InfluxDBStorage) Close() {
 	s.client.Close()
 }
 
+// Client returns the underlying InfluxDB client for advanced operations
+func (s *InfluxDBStorage) Client() influxdb2.Client {
+	return s.client
+}
+
+// Health checks the InfluxDB connection health
+func (s *InfluxDBStorage) Health(ctx context.Context) error {
+	health, err := s.client.Health(ctx)
+	if err != nil {
+		return fmt.Errorf("health check failed: %w", err)
+	}
+	if health.Status != "pass" {
+		message := "unknown error"
+		if health.Message != nil {
+			message = *health.Message
+		}
+		return fmt.Errorf("InfluxDB unhealthy: %s", message)
+	}
+	return nil
+}
+
+// sanitizeFluxString escapes special characters in strings used in Flux queries
+// to prevent injection attacks
+func sanitizeFluxString(s string) string {
+	// Escape backslashes first, then quotes
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return s
+}
+
 // QueryLatestReading retrieves the most recent power reading for a device
 func (s *InfluxDBStorage) QueryLatestReading(ctx context.Context, deviceID string) (*monitoring.PowerReading, error) {
 	// Validate input
@@ -132,13 +163,17 @@ func (s *InfluxDBStorage) QueryLatestReading(ctx context.Context, deviceID strin
 
 	queryAPI := s.client.QueryAPI(s.org)
 
+	// Sanitize inputs to prevent Flux injection
+	safeBucket := sanitizeFluxString(s.bucket)
+	safeDeviceID := sanitizeFluxString(deviceID)
+
 	query := fmt.Sprintf(`
 		from(bucket: "%s")
 			|> range(start: -1h)
 			|> filter(fn: (r) => r._measurement == "power_consumption")
 			|> filter(fn: (r) => r.device_id == "%s")
 			|> last()
-	`, s.bucket, deviceID)
+	`, safeBucket, safeDeviceID)
 
 	result, err := queryAPI.Query(ctx, query)
 	if err != nil {
