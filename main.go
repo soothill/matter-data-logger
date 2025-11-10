@@ -1,33 +1,57 @@
+// Copyright (c) 2025 Darren Soothill
+// Licensed under the MIT License
+
 package main
 
 import (
 	"context"
 	"flag"
-	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/soothill/matter-data-logger/config"
 	"github.com/soothill/matter-data-logger/discovery"
 	"github.com/soothill/matter-data-logger/monitoring"
+	"github.com/soothill/matter-data-logger/pkg/logger"
+	"github.com/soothill/matter-data-logger/pkg/metrics"
 	"github.com/soothill/matter-data-logger/storage"
 )
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "Path to configuration file")
+	metricsPort := flag.String("metrics-port", "9090", "Port for Prometheus metrics endpoint")
 	flag.Parse()
 
 	// Load configuration
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+		logger.Initialize("error")
+		logger.Fatal().Err(err).Msg("Failed to load configuration")
 	}
 
-	log.Printf("Starting Matter Power Data Logger")
-	log.Printf("Discovery interval: %v", cfg.Matter.DiscoveryInterval)
-	log.Printf("Poll interval: %v", cfg.Matter.PollInterval)
+	// Initialize logger with configured level
+	logger.Initialize(cfg.Logging.Level)
+
+	logger.Info().Msg("Starting Matter Power Data Logger")
+	logger.Info().Dur("discovery_interval", cfg.Matter.DiscoveryInterval).
+		Dur("poll_interval", cfg.Matter.PollInterval).
+		Msg("Configuration loaded")
+
+	// Start metrics HTTP server
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		http.HandleFunc("/health", healthCheckHandler)
+		http.HandleFunc("/ready", readinessCheckHandler)
+
+		logger.Info().Str("port", *metricsPort).Msg("Starting metrics and health check server")
+		if err := http.ListenAndServe(":"+*metricsPort, nil); err != nil {
+			logger.Error().Err(err).Msg("Metrics server failed")
+		}
+	}()
 
 	// Initialize InfluxDB storage
 	db, err := storage.NewInfluxDBStorage(
@@ -37,7 +61,7 @@ func main() {
 		cfg.InfluxDB.Bucket,
 	)
 	if err != nil {
-		log.Fatalf("Failed to initialize InfluxDB: %v", err)
+		logger.Fatal().Err(err).Msg("Failed to initialize InfluxDB")
 	}
 	defer db.Close()
 
@@ -57,8 +81,8 @@ func main() {
 
 	go func() {
 		sig := <-sigChan
-		log.Printf("Received signal: %v", sig)
-		log.Println("Initiating graceful shutdown...")
+		logger.Info().Str("signal", sig.String()).Msg("Received shutdown signal")
+		logger.Info().Msg("Initiating graceful shutdown...")
 		cancel()
 	}()
 
@@ -66,28 +90,41 @@ func main() {
 	go func() {
 		for reading := range monitor.Readings() {
 			if err := db.WriteReading(reading); err != nil {
-				log.Printf("Failed to write reading to InfluxDB: %v", err)
+				logger.Error().Err(err).Str("device_id", reading.DeviceID).
+					Msg("Failed to write reading to InfluxDB")
+				metrics.InfluxDBWriteErrors.Inc()
+			} else {
+				metrics.InfluxDBWritesTotal.Inc()
+				metrics.CurrentPower.WithLabelValues(reading.DeviceID, reading.DeviceName).Set(reading.Power)
+				metrics.CurrentVoltage.WithLabelValues(reading.DeviceID, reading.DeviceName).Set(reading.Voltage)
+				metrics.CurrentCurrent.WithLabelValues(reading.DeviceID, reading.DeviceName).Set(reading.Current)
 			}
 		}
 	}()
 
 	// Initial device discovery
-	log.Println("Performing initial device discovery...")
+	logger.Info().Msg("Performing initial device discovery")
+	start := time.Now()
 	devices, err := scanner.Discover(ctx, 10*time.Second)
+	metrics.DiscoveryDuration.Observe(time.Since(start).Seconds())
+
 	if err != nil {
-		log.Printf("Initial discovery failed: %v", err)
+		logger.Error().Err(err).Msg("Initial discovery failed")
 	} else {
-		log.Printf("Discovered %d Matter devices", len(devices))
+		logger.Info().Int("count", len(devices)).Msg("Discovered Matter devices")
+		metrics.DevicesDiscovered.Set(float64(len(scanner.GetDevices())))
 	}
 
 	// Start monitoring power devices
 	powerDevices := scanner.GetPowerDevices()
-	log.Printf("Found %d devices with power measurement capability", len(powerDevices))
+	metrics.PowerDevicesDiscovered.Set(float64(len(powerDevices)))
+	logger.Info().Int("count", len(powerDevices)).Msg("Found devices with power measurement capability")
 
 	if len(powerDevices) > 0 {
 		monitor.Start(ctx, powerDevices)
+		metrics.DevicesMonitored.Set(float64(monitor.GetMonitoredDeviceCount()))
 	} else {
-		log.Println("No power monitoring devices found. Will retry during periodic discovery.")
+		logger.Warn().Msg("No power monitoring devices found. Will retry during periodic discovery")
 	}
 
 	// Periodic device discovery
@@ -98,33 +135,56 @@ func main() {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("Shutting down...")
+			logger.Info().Msg("Shutting down")
 			db.Flush()
 			return
 
 		case <-discoveryTicker.C:
-			log.Println("Performing periodic device discovery...")
+			logger.Info().Msg("Performing periodic device discovery")
+			start := time.Now()
 			newDevices, err := scanner.Discover(ctx, 10*time.Second)
+			metrics.DiscoveryDuration.Observe(time.Since(start).Seconds())
+
 			if err != nil {
-				log.Printf("Discovery failed: %v", err)
+				logger.Error().Err(err).Msg("Discovery failed")
 				continue
 			}
 
-			log.Printf("Discovery complete. Total devices: %d", len(scanner.GetDevices()))
+			allDevices := scanner.GetDevices()
+			logger.Info().Int("total_devices", len(allDevices)).Int("new_devices", len(newDevices)).
+				Msg("Discovery complete")
+			metrics.DevicesDiscovered.Set(float64(len(allDevices)))
 
-			// Check for new power devices
+			// Check for new power devices and start monitoring only new ones
 			powerDevices := scanner.GetPowerDevices()
-			if len(powerDevices) > 0 {
-				log.Printf("Monitoring %d power devices", len(powerDevices))
-				// Note: In production, you'd want to track which devices are already
-				// being monitored to avoid starting duplicate monitoring goroutines
+			metrics.PowerDevicesDiscovered.Set(float64(len(powerDevices)))
+
+			if len(newDevices) > 0 {
 				for _, device := range newDevices {
-					if device.HasPowerMeasurement() {
-						log.Printf("Starting monitoring for new device: %s", device.Name)
-						go monitor.Start(ctx, []*discovery.Device{device})
+					if device.HasPowerMeasurement() && !monitor.IsMonitoring(device.GetDeviceID()) {
+						logger.Info().Str("device_id", device.GetDeviceID()).
+							Str("device_name", device.Name).
+							Msg("Starting monitoring for new power device")
+						monitor.StartMonitoringDevice(ctx, device)
 					}
 				}
+				metrics.DevicesMonitored.Set(float64(monitor.GetMonitoredDeviceCount()))
 			}
 		}
 	}
+}
+
+// healthCheckHandler handles health check requests
+func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
+}
+
+// readinessCheckHandler handles readiness check requests
+func readinessCheckHandler(w http.ResponseWriter, r *http.Request) {
+	// In production, you might want to check:
+	// - InfluxDB connection
+	// - Active device monitoring
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("READY"))
 }

@@ -1,12 +1,16 @@
+// Copyright (c) 2025 Darren Soothill
+// Licensed under the MIT License
+
 package monitoring
 
 import (
 	"context"
-	"log"
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/soothill/matter-data-logger/discovery"
+	"github.com/soothill/matter-data-logger/pkg/logger"
 )
 
 // PowerReading represents a power consumption measurement
@@ -22,25 +26,80 @@ type PowerReading struct {
 
 // PowerMonitor handles power consumption monitoring
 type PowerMonitor struct {
-	pollInterval time.Duration
-	readings     chan *PowerReading
+	pollInterval      time.Duration
+	readings          chan *PowerReading
+	monitoredDevices  map[string]context.CancelFunc
+	deviceMutex       sync.RWMutex
 }
 
 // NewPowerMonitor creates a new power monitor
 func NewPowerMonitor(pollInterval time.Duration) *PowerMonitor {
 	return &PowerMonitor{
-		pollInterval: pollInterval,
-		readings:     make(chan *PowerReading, 100),
+		pollInterval:     pollInterval,
+		readings:         make(chan *PowerReading, 100),
+		monitoredDevices: make(map[string]context.CancelFunc),
 	}
 }
 
 // Start begins monitoring the given devices
 func (pm *PowerMonitor) Start(ctx context.Context, devices []*discovery.Device) {
-	log.Printf("Starting power monitoring for %d devices", len(devices))
+	logger.Info().Msgf("Starting power monitoring for %d devices", len(devices))
 
 	for _, device := range devices {
-		go pm.monitorDevice(ctx, device)
+		pm.StartMonitoringDevice(ctx, device)
 	}
+}
+
+// StartMonitoringDevice starts monitoring a single device if not already monitored
+func (pm *PowerMonitor) StartMonitoringDevice(ctx context.Context, device *discovery.Device) bool {
+	deviceID := device.GetDeviceID()
+
+	pm.deviceMutex.Lock()
+	defer pm.deviceMutex.Unlock()
+
+	// Check if device is already being monitored
+	if _, exists := pm.monitoredDevices[deviceID]; exists {
+		logger.Debug().Str("device_id", deviceID).Str("device_name", device.Name).
+			Msg("Device already being monitored, skipping")
+		return false
+	}
+
+	// Create a cancellable context for this device
+	deviceCtx, cancel := context.WithCancel(ctx)
+	pm.monitoredDevices[deviceID] = cancel
+
+	logger.Info().Str("device_id", deviceID).Str("device_name", device.Name).
+		Msg("Starting monitoring for new device")
+
+	go pm.monitorDevice(deviceCtx, device)
+	return true
+}
+
+// StopMonitoringDevice stops monitoring a specific device
+func (pm *PowerMonitor) StopMonitoringDevice(deviceID string) {
+	pm.deviceMutex.Lock()
+	defer pm.deviceMutex.Unlock()
+
+	if cancel, exists := pm.monitoredDevices[deviceID]; exists {
+		cancel()
+		delete(pm.monitoredDevices, deviceID)
+		logger.Info().Str("device_id", deviceID).Msg("Stopped monitoring device")
+	}
+}
+
+// IsMonitoring checks if a device is currently being monitored
+func (pm *PowerMonitor) IsMonitoring(deviceID string) bool {
+	pm.deviceMutex.RLock()
+	defer pm.deviceMutex.RUnlock()
+	_, exists := pm.monitoredDevices[deviceID]
+	return exists
+}
+
+// GetMonitoredDeviceCount returns the number of devices being monitored
+func (pm *PowerMonitor) GetMonitoredDeviceCount() int {
+	pm.deviceMutex.RLock()
+	defer pm.deviceMutex.RUnlock()
+	return len(pm.monitoredDevices)
 }
 
 // monitorDevice continuously polls a single device for power data
@@ -48,7 +107,17 @@ func (pm *PowerMonitor) monitorDevice(ctx context.Context, device *discovery.Dev
 	ticker := time.NewTicker(pm.pollInterval)
 	defer ticker.Stop()
 
-	log.Printf("Monitoring device: %s (%s)", device.Name, device.GetDeviceID())
+	deviceID := device.GetDeviceID()
+	logger.Info().Str("device_id", deviceID).Str("device_name", device.Name).
+		Msg("Monitoring device")
+
+	// Clean up when done
+	defer func() {
+		pm.deviceMutex.Lock()
+		delete(pm.monitoredDevices, deviceID)
+		pm.deviceMutex.Unlock()
+		logger.Info().Str("device_id", deviceID).Msg("Stopped monitoring device")
+	}()
 
 	for {
 		select {
@@ -57,14 +126,16 @@ func (pm *PowerMonitor) monitorDevice(ctx context.Context, device *discovery.Dev
 		case <-ticker.C:
 			reading, err := pm.readPower(device)
 			if err != nil {
-				log.Printf("Error reading power from %s: %v", device.Name, err)
+				logger.Error().Err(err).Str("device_id", deviceID).Str("device_name", device.Name).
+					Msg("Error reading power from device")
 				continue
 			}
 
 			select {
 			case pm.readings <- reading:
 			default:
-				log.Printf("Warning: readings channel full, dropping reading from %s", device.Name)
+				logger.Warn().Str("device_id", deviceID).Str("device_name", device.Name).
+					Msg("Readings channel full, dropping reading")
 			}
 		}
 	}
@@ -109,8 +180,13 @@ func (pm *PowerMonitor) readPower(device *discovery.Device) (*PowerReading, erro
 		Energy:     0, // Would need to track cumulative energy
 	}
 
-	log.Printf("Power reading from %s: %.2fW, %.2fV, %.2fA",
-		device.Name, reading.Power, reading.Voltage, reading.Current)
+	logger.Debug().
+		Str("device_id", reading.DeviceID).
+		Str("device_name", reading.DeviceName).
+		Float64("power_w", reading.Power).
+		Float64("voltage_v", reading.Voltage).
+		Float64("current_a", reading.Current).
+		Msg("Power reading")
 
 	return reading, nil
 }
