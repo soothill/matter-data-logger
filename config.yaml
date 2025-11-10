@@ -1,0 +1,32 @@
+# Matter Power Data Logger Configuration
+
+influxdb:
+  # InfluxDB server URL
+  url: "http://localhost:8086"
+
+  # InfluxDB authentication token
+  # Generate with: influx auth create --org <org> --read-buckets --write-buckets
+  token: "your-influxdb-token-here"
+
+  # Organization name
+  organization: "my-org"
+
+  # Bucket name for storing power data
+  bucket: "matter-power"
+
+matter:
+  # How often to scan for new Matter devices (e.g., 5m, 10m, 1h)
+  discovery_interval: 5m
+
+  # How often to poll devices for power readings (e.g., 10s, 30s, 1m)
+  poll_interval: 30s
+
+  # mDNS service type for Matter devices
+  service_type: "_matter._tcp"
+
+  # mDNS domain
+  domain: "local."
+
+logging:
+  # Log level: debug, info, warn, error
+  level: "info"
