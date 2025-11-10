@@ -113,6 +113,8 @@ jobs:
       with:
         version: v1.61
         args: --timeout=5m
+        skip-cache: true
+        skip-pkg-cache: true
 
   build-multiplatform-containers:
     name: Build Multiplatform Containers
