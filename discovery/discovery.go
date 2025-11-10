@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Darren Soothill
 // Licensed under the MIT License
 
+// Package discovery provides Matter device discovery via mDNS.
 package discovery
 
 import (
@@ -31,9 +32,9 @@ func (d *Device) HasPowerMeasurement() bool {
 		// Cluster 0x0B04 is the Electrical Measurement cluster
 		// Cluster 0x0091 is the Electrical Power Measurement cluster (new)
 		return strings.Contains(clusters, "0B04") ||
-		       strings.Contains(clusters, "B04") ||
-		       strings.Contains(clusters, "0091") ||
-		       strings.Contains(clusters, "91")
+			strings.Contains(clusters, "B04") ||
+			strings.Contains(clusters, "0091") ||
+			strings.Contains(clusters, "91")
 	}
 	return false
 }

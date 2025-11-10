@@ -201,8 +201,7 @@ func TestReadingsChannel(t *testing.T) {
 	case reading := <-monitor.Readings():
 		if reading == nil {
 			t.Error("Received nil reading from channel")
-		}
-		if reading.DeviceID != device.GetDeviceID() {
+		} else if reading.DeviceID != device.GetDeviceID() {
 			t.Errorf("Reading DeviceID = %v, want %v", reading.DeviceID, device.GetDeviceID())
 		}
 	case <-time.After(1 * time.Second):
@@ -290,7 +289,7 @@ func TestStopNonExistentDevice(t *testing.T) {
 	}
 }
 
-func TestReadingsChannelFull(t *testing.T) {
+func TestReadingsChannelFull(_ *testing.T) {
 	// Create monitor with very small channel buffer
 	monitor := &PowerMonitor{
 		pollInterval:     1 * time.Millisecond,
@@ -317,7 +316,7 @@ func TestReadingsChannelFull(t *testing.T) {
 	// This test ensures no panic occurs
 }
 
-func TestMonitorDevice_ZeroPollInterval(t *testing.T) {
+func TestMonitorDevice_ZeroPollInterval(_ *testing.T) {
 	// Test that zero or very short poll interval doesn't cause issues
 	monitor := NewPowerMonitor(1 * time.Nanosecond)
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -371,7 +370,7 @@ func TestReadPower_ConsistentData(t *testing.T) {
 	}
 }
 
-func TestIsMonitoring_ThreadSafety(t *testing.T) {
+func TestIsMonitoring_ThreadSafety(_ *testing.T) {
 	monitor := NewPowerMonitor(30 * time.Second)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

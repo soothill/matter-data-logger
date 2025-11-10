@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Darren Soothill
 // Licensed under the MIT License
 
+// Package config provides configuration management for the Matter data logger.
 package config
 
 import (

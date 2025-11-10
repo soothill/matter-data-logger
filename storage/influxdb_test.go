@@ -49,7 +49,7 @@ func TestNewInfluxDBStorage_ValidParameters(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name, func(_ *testing.T) {
 			storage, err := NewInfluxDBStorage(tc.url, tc.token, tc.org, tc.bucket)
 			// Connection will likely fail, but we're testing parameter handling
 			if storage != nil {
@@ -132,8 +132,7 @@ func TestWriteBatch_ValidReadings(t *testing.T) {
 	for i, reading := range readings {
 		if reading == nil {
 			t.Errorf("Reading %d should not be nil", i)
-		}
-		if reading.DeviceID == "" {
+		} else if reading.DeviceID == "" {
 			t.Errorf("Reading %d: DeviceID should not be empty", i)
 		}
 	}
@@ -329,7 +328,7 @@ func TestQueryLatestReading_DeviceIDValidation(t *testing.T) {
 	}{
 		{"valid device ID", "device-123", true},
 		{"empty device ID", "", false},
-		{"device ID with spaces", "device 123", true}, // Technically valid
+		{"device ID with spaces", "device 123", true},             // Technically valid
 		{"very long device ID", string(make([]byte, 1000)), true}, // May need limits
 	}
 

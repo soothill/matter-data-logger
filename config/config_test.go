@@ -149,8 +149,8 @@ func TestGetEnvOrDefault(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.envValue != "" {
-				os.Setenv(tt.key, tt.envValue)
-				defer os.Unsetenv(tt.key)
+				_ = os.Setenv(tt.key, tt.envValue)
+				defer func() { _ = os.Unsetenv(tt.key) }()
 			}
 
 			got := GetEnvOrDefault(tt.key, tt.defaultValue)
@@ -195,8 +195,8 @@ func TestGetEnvAsIntOrDefault(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.envValue != "" {
-				os.Setenv(tt.key, tt.envValue)
-				defer os.Unsetenv(tt.key)
+				_ = os.Setenv(tt.key, tt.envValue)
+				defer func() { _ = os.Unsetenv(tt.key) }()
 			}
 
 			got := GetEnvAsIntOrDefault(tt.key, tt.defaultValue)
@@ -220,13 +220,13 @@ func TestLoad_InvalidYAML(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
 
 	content := []byte("invalid: yaml: content:\n  - missing\n  closing")
 	if _, err := tmpfile.Write(content); err != nil {
 		t.Fatal(err)
 	}
-	tmpfile.Close()
+	_ = tmpfile.Close()
 
 	_, err = Load(tmpfile.Name())
 	if err == nil {
@@ -240,7 +240,7 @@ func TestLoad_ValidFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
 
 	content := []byte(`influxdb:
   url: "http://localhost:8086"
@@ -256,7 +256,7 @@ logging:
 	if _, err := tmpfile.Write(content); err != nil {
 		t.Fatal(err)
 	}
-	tmpfile.Close()
+	_ = tmpfile.Close()
 
 	cfg, err := Load(tmpfile.Name())
 	if err != nil {
@@ -283,7 +283,7 @@ func TestLoad_EnvironmentOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
 
 	content := []byte(`influxdb:
   url: "http://localhost:8086"
@@ -299,25 +299,25 @@ logging:
 	if _, err := tmpfile.Write(content); err != nil {
 		t.Fatal(err)
 	}
-	tmpfile.Close()
+	_ = tmpfile.Close()
 
 	// Set environment variables to override
-	os.Setenv("INFLUXDB_URL", "http://env-host:8086")
-	os.Setenv("INFLUXDB_TOKEN", "env-token")
-	os.Setenv("INFLUXDB_ORG", "env-org")
-	os.Setenv("INFLUXDB_BUCKET", "env-bucket")
-	os.Setenv("LOG_LEVEL", "debug")
-	os.Setenv("MATTER_DISCOVERY_INTERVAL", "10m")
-	os.Setenv("MATTER_POLL_INTERVAL", "1m")
+	_ = os.Setenv("INFLUXDB_URL", "http://env-host:8086")
+	_ = os.Setenv("INFLUXDB_TOKEN", "env-token")
+	_ = os.Setenv("INFLUXDB_ORG", "env-org")
+	_ = os.Setenv("INFLUXDB_BUCKET", "env-bucket")
+	_ = os.Setenv("LOG_LEVEL", "debug")
+	_ = os.Setenv("MATTER_DISCOVERY_INTERVAL", "10m")
+	_ = os.Setenv("MATTER_POLL_INTERVAL", "1m")
 
 	defer func() {
-		os.Unsetenv("INFLUXDB_URL")
-		os.Unsetenv("INFLUXDB_TOKEN")
-		os.Unsetenv("INFLUXDB_ORG")
-		os.Unsetenv("INFLUXDB_BUCKET")
-		os.Unsetenv("LOG_LEVEL")
-		os.Unsetenv("MATTER_DISCOVERY_INTERVAL")
-		os.Unsetenv("MATTER_POLL_INTERVAL")
+		_ = os.Unsetenv("INFLUXDB_URL")
+		_ = os.Unsetenv("INFLUXDB_TOKEN")
+		_ = os.Unsetenv("INFLUXDB_ORG")
+		_ = os.Unsetenv("INFLUXDB_BUCKET")
+		_ = os.Unsetenv("LOG_LEVEL")
+		_ = os.Unsetenv("MATTER_DISCOVERY_INTERVAL")
+		_ = os.Unsetenv("MATTER_POLL_INTERVAL")
 	}()
 
 	cfg, err := Load(tmpfile.Name())
@@ -355,7 +355,7 @@ func TestLoad_Defaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
 
 	content := []byte(`influxdb:
   url: "http://localhost:8086"
@@ -366,7 +366,7 @@ func TestLoad_Defaults(t *testing.T) {
 	if _, err := tmpfile.Write(content); err != nil {
 		t.Fatal(err)
 	}
-	tmpfile.Close()
+	_ = tmpfile.Close()
 
 	cfg, err := Load(tmpfile.Name())
 	if err != nil {
