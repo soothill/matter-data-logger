@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -25,7 +26,8 @@ import (
 )
 
 // initializeComponents initializes all application components
-func initializeComponents(cfg *config.Config, metricsPort string) (*notifications.SlackNotifier, *storage.CachingStorage, *storage.InfluxDBStorage, *http.Server) {
+// Returns an error instead of calling Fatal() to allow for testing
+func initializeComponents(cfg *config.Config, metricsPort string) (*notifications.SlackNotifier, *storage.CachingStorage, *storage.InfluxDBStorage, *http.Server, error) {
 	var err error
 
 	// Initialize Slack notifier
@@ -45,7 +47,7 @@ func initializeComponents(cfg *config.Config, metricsPort string) (*notification
 		cfg.InfluxDB.Bucket,
 	)
 	if err != nil {
-		logger.Fatal().Err(err).Msg("Failed to initialize InfluxDB")
+		return nil, nil, nil, nil, fmt.Errorf("failed to initialize InfluxDB: %w", err)
 	}
 
 	// Initialize local cache
@@ -56,7 +58,8 @@ func initializeComponents(cfg *config.Config, metricsPort string) (*notification
 		cfg.Cache.MaxAge,
 	)
 	if err != nil {
-		logger.Fatal().Err(err).Msg("Failed to initialize local cache")
+		influxDB.Close() // Clean up InfluxDB connection
+		return nil, nil, nil, nil, fmt.Errorf("failed to initialize local cache: %w", err)
 	}
 	logger.Info().Str("directory", cfg.Cache.Directory).
 		Int64("max_size_mb", cfg.Cache.MaxSize/(1024*1024)).
@@ -82,7 +85,7 @@ func initializeComponents(cfg *config.Config, metricsPort string) (*notification
 		Handler: mux,
 	}
 
-	return notifier, db, influxDB, server
+	return notifier, db, influxDB, server, nil
 }
 
 func main() {
@@ -112,7 +115,10 @@ func main() {
 		Msg("Configuration loaded")
 
 	// Initialize components
-	notifier, db, influxDB, server := initializeComponents(cfg, *metricsPort)
+	notifier, db, influxDB, server, err := initializeComponents(cfg, *metricsPort)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to initialize components")
+	}
 	defer influxDB.Close()
 	defer db.Close()
 

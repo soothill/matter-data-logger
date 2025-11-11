@@ -178,10 +178,50 @@ func TestPerformCleanup(t *testing.T) {
 }
 
 func TestInitializeComponents(t *testing.T) {
-	// Skip this test as initializeComponents calls Fatal() on InfluxDB connection failure
-	// which would terminate the entire test suite
-	// This function is indirectly tested by integration tests
-	t.Skip("initializeComponents() calls Fatal() on errors, cannot test without real InfluxDB")
+	// Create a temporary directory for cache
+	tempDir := t.TempDir()
+
+	// Test with invalid InfluxDB URL - should return error, not Fatal()
+	cfg := &config.Config{
+		InfluxDB: config.InfluxDBConfig{
+			URL:          "http://invalid-host-does-not-exist:8086",
+			Token:        "test-token",
+			Organization: "test-org",
+			Bucket:       "test-bucket",
+		},
+		Cache: config.CacheConfig{
+			Directory: tempDir,
+			MaxSize:   1024 * 1024,
+			MaxAge:    time.Hour,
+		},
+		Notifications: config.NotificationsConfig{
+			SlackWebhookURL: "",
+		},
+	}
+
+	// Call initializeComponents - should return error, not panic
+	notifier, db, influxDB, server, err := initializeComponents(cfg, "9091")
+
+	// Should return an error
+	if err == nil {
+		t.Error("Expected error when InfluxDB connection fails, got nil")
+	}
+
+	// All returned values should be nil when error occurs
+	if notifier != nil {
+		t.Error("Expected nil notifier on error")
+	}
+	if db != nil {
+		t.Error("Expected nil db on error")
+		db.Close()
+	}
+	if influxDB != nil {
+		t.Error("Expected nil influxDB on error")
+		influxDB.Close()
+	}
+	if server != nil {
+		t.Error("Expected nil server on error")
+	}
 }
 
 func TestPerformInitialDiscovery_NoDevices(t *testing.T) {
@@ -227,6 +267,7 @@ func TestPerformPeriodicDiscovery_NoDevices(t *testing.T) {
 
 	// Verify function completed without panic
 	// In a test environment with no devices, this tests error handling
+	t.Log("Periodic discovery completed without panic")
 }
 
 func TestReadinessCheckHandler_Healthy(t *testing.T) {
@@ -261,8 +302,50 @@ func TestReadinessCheckHandler_Healthy(t *testing.T) {
 }
 
 func TestInitializeComponents_WithSlackWebhook(t *testing.T) {
-	// Skip this test as initializeComponents calls Fatal() on InfluxDB connection failure
-	t.Skip("initializeComponents() calls Fatal() on errors, cannot test without real InfluxDB")
+	// Test with invalid cache directory to test cache error handling
+	cfg := &config.Config{
+		InfluxDB: config.InfluxDBConfig{
+			URL:          "http://localhost:8086",
+			Token:        "test-token",
+			Organization: "test-org",
+			Bucket:       "test-bucket",
+		},
+		Cache: config.CacheConfig{
+			Directory: "/dev/null/invalid/path", // Invalid path
+			MaxSize:   1024 * 1024,
+			MaxAge:    time.Hour,
+		},
+		Notifications: config.NotificationsConfig{
+			SlackWebhookURL: "https://hooks.slack.com/services/TEST/TEST/TEST",
+		},
+	}
+
+	// Call initializeComponents - should return cache error
+	notifier, db, influxDB, server, err := initializeComponents(cfg, "9092")
+
+	// Should return an error (either InfluxDB or cache error)
+	if err == nil {
+		// If InfluxDB is somehow running locally, that's fine
+		// Clean up resources
+		if db != nil {
+			defer db.Close()
+		}
+		if influxDB != nil {
+			defer influxDB.Close()
+		}
+
+		// Verify notifier was created with Slack enabled
+		if notifier == nil {
+			t.Error("Expected notifier to be created")
+		} else if !notifier.IsEnabled() {
+			t.Error("Expected Slack to be enabled when webhook URL provided")
+		}
+
+		// Verify server was created
+		if server == nil {
+			t.Error("Expected server to be created")
+		}
+	}
 }
 
 func TestMain_ConfigFileHandling(t *testing.T) {
