@@ -184,3 +184,10 @@ func (s *Scanner) GetPowerDevices() []*Device {
 	}
 	return powerDevices
 }
+
+// GetDeviceByID returns a device by its ID, or nil if not found
+func (s *Scanner) GetDeviceByID(deviceID string) *Device {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.devices[deviceID]
+}

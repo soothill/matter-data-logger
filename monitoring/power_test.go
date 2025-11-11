@@ -5,15 +5,41 @@ package monitoring
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/soothill/matter-data-logger/discovery"
 )
 
+// mockScanner is a mock implementation of DeviceScanner for testing
+type mockScanner struct {
+	devices map[string]*discovery.Device
+	mu      sync.RWMutex
+}
+
+func newMockScanner() *mockScanner {
+	return &mockScanner{
+		devices: make(map[string]*discovery.Device),
+	}
+}
+
+func (m *mockScanner) GetDeviceByID(deviceID string) *discovery.Device {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.devices[deviceID]
+}
+
+func (m *mockScanner) addDevice(device *discovery.Device) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.devices[device.GetDeviceID()] = device
+}
+
 func TestNewPowerMonitor(t *testing.T) {
 	pollInterval := 30 * time.Second
-	monitor := NewPowerMonitor(pollInterval)
+	scanner := newMockScanner()
+	monitor := NewPowerMonitor(pollInterval, scanner)
 
 	if monitor.pollInterval != pollInterval {
 		t.Errorf("pollInterval = %v, want %v", monitor.pollInterval, pollInterval)
@@ -29,7 +55,8 @@ func TestNewPowerMonitor(t *testing.T) {
 }
 
 func TestStartMonitoringDevice(t *testing.T) {
-	monitor := NewPowerMonitor(30 * time.Second)
+	scanner := newMockScanner()
+	monitor := NewPowerMonitor(30 * time.Second, scanner)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -65,7 +92,8 @@ func TestStartMonitoringDevice(t *testing.T) {
 }
 
 func TestStopMonitoringDevice(t *testing.T) {
-	monitor := NewPowerMonitor(30 * time.Second)
+	scanner := newMockScanner()
+	monitor := NewPowerMonitor(30 * time.Second, scanner)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -95,7 +123,8 @@ func TestStopMonitoringDevice(t *testing.T) {
 }
 
 func TestReadPower(t *testing.T) {
-	monitor := NewPowerMonitor(30 * time.Second)
+	scanner := newMockScanner()
+	monitor := NewPowerMonitor(30 * time.Second, scanner)
 
 	device := &discovery.Device{
 		Name: "Test Device",
@@ -136,7 +165,8 @@ func TestReadPower(t *testing.T) {
 }
 
 func TestStartMultipleDevices(t *testing.T) {
-	monitor := NewPowerMonitor(30 * time.Second)
+	scanner := newMockScanner()
+	monitor := NewPowerMonitor(30 * time.Second, scanner)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -180,7 +210,8 @@ func TestStartMultipleDevices(t *testing.T) {
 }
 
 func TestReadingsChannel(t *testing.T) {
-	monitor := NewPowerMonitor(100 * time.Millisecond)
+	scanner := newMockScanner()
+	monitor := NewPowerMonitor(100 * time.Millisecond, scanner)
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
@@ -207,7 +238,8 @@ func TestReadingsChannel(t *testing.T) {
 }
 
 func TestContextCancellation(t *testing.T) {
-	monitor := NewPowerMonitor(30 * time.Second)
+	scanner := newMockScanner()
+	monitor := NewPowerMonitor(30 * time.Second, scanner)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	device := &discovery.Device{
@@ -239,7 +271,8 @@ func TestContextCancellation(t *testing.T) {
 }
 
 func TestConcurrentMonitoring(t *testing.T) {
-	monitor := NewPowerMonitor(30 * time.Second)
+	scanner := newMockScanner()
+	monitor := NewPowerMonitor(30 * time.Second, scanner)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -275,7 +308,8 @@ func TestConcurrentMonitoring(t *testing.T) {
 }
 
 func TestStopNonExistentDevice(t *testing.T) {
-	monitor := NewPowerMonitor(30 * time.Second)
+	scanner := newMockScanner()
+	monitor := NewPowerMonitor(30 * time.Second, scanner)
 
 	// Stopping a device that doesn't exist should not panic
 	monitor.StopMonitoringDevice("nonexistent-device")
@@ -315,7 +349,8 @@ func TestReadingsChannelFull(_ *testing.T) {
 
 func TestMonitorDevice_ZeroPollInterval(_ *testing.T) {
 	// Test that zero or very short poll interval doesn't cause issues
-	monitor := NewPowerMonitor(1 * time.Nanosecond)
+	scanner := newMockScanner()
+	monitor := NewPowerMonitor(1 * time.Nanosecond, scanner)
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
@@ -332,7 +367,8 @@ func TestMonitorDevice_ZeroPollInterval(_ *testing.T) {
 }
 
 func TestReadPower_ConsistentData(t *testing.T) {
-	monitor := NewPowerMonitor(30 * time.Second)
+	scanner := newMockScanner()
+	monitor := NewPowerMonitor(30 * time.Second, scanner)
 
 	device := &discovery.Device{
 		Name: "Test Device",
@@ -369,7 +405,8 @@ func TestReadPower_ConsistentData(t *testing.T) {
 }
 
 func TestIsMonitoring_ThreadSafety(_ *testing.T) {
-	monitor := NewPowerMonitor(30 * time.Second)
+	scanner := newMockScanner()
+	monitor := NewPowerMonitor(30 * time.Second, scanner)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

@@ -35,6 +35,11 @@ type PowerReading struct {
 	Energy     float64 // Cumulative energy in kWh
 }
 
+// DeviceScanner defines the interface for retrieving device information
+type DeviceScanner interface {
+	GetDeviceByID(deviceID string) *discovery.Device
+}
+
 // PowerMonitor handles power consumption monitoring
 type PowerMonitor struct {
 	pollInterval     time.Duration
@@ -43,14 +48,16 @@ type PowerMonitor struct {
 	deviceMutex      sync.RWMutex
 	wg               sync.WaitGroup
 	stopped          bool
+	scanner          DeviceScanner
 }
 
 // NewPowerMonitor creates a new power monitor
-func NewPowerMonitor(pollInterval time.Duration) *PowerMonitor {
+func NewPowerMonitor(pollInterval time.Duration, scanner DeviceScanner) *PowerMonitor {
 	return &PowerMonitor{
 		pollInterval:     pollInterval,
 		readings:         make(chan *PowerReading, readingsChannelSize),
 		monitoredDevices: make(map[string]context.CancelFunc),
+		scanner:          scanner,
 	}
 }
 
@@ -196,9 +203,18 @@ func (pm *PowerMonitor) readPower(device *discovery.Device) (*PowerReading, erro
 	voltage := simulatedBaseVoltage + (rand.Float64()-0.5)*simulatedVoltageVar
 	current := power / voltage
 
+	// Get current device name from scanner to handle device renames
+	deviceID := device.GetDeviceID()
+	deviceName := device.Name // Default to passed device name
+	if pm.scanner != nil {
+		if currentDevice := pm.scanner.GetDeviceByID(deviceID); currentDevice != nil {
+			deviceName = currentDevice.Name
+		}
+	}
+
 	reading := &PowerReading{
-		DeviceID:   device.GetDeviceID(),
-		DeviceName: device.Name,
+		DeviceID:   deviceID,
+		DeviceName: deviceName,
 		Timestamp:  time.Now(),
 		Power:      power,
 		Voltage:    voltage,

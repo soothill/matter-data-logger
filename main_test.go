@@ -231,8 +231,8 @@ func TestPerformInitialDiscovery_NoDevices(t *testing.T) {
 	// Create scanner
 	scanner := discovery.NewScanner("_matter._tcp", "local.")
 
-	// Create monitor
-	monitor := monitoring.NewPowerMonitor(1 * time.Second)
+	// Create monitor with scanner reference
+	monitor := monitoring.NewPowerMonitor(1 * time.Second, scanner)
 	defer monitor.Stop()
 
 	// Run initial discovery (will timeout as no real devices)
@@ -258,8 +258,8 @@ func TestPerformPeriodicDiscovery_NoDevices(t *testing.T) {
 	// Create scanner
 	scanner := discovery.NewScanner("_matter._tcp", "local.")
 
-	// Create monitor
-	monitor := monitoring.NewPowerMonitor(1 * time.Second)
+	// Create monitor with scanner reference
+	monitor := monitoring.NewPowerMonitor(1 * time.Second, scanner)
 	defer monitor.Stop()
 
 	// Run periodic discovery (will timeout as no real devices)

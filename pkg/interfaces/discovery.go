@@ -30,6 +30,9 @@ type DeviceScanner interface {
 
 	// GetPowerDevices returns only devices with power measurement capability
 	GetPowerDevices() []*Device
+
+	// GetDeviceByID returns a device by its ID, or nil if not found
+	GetDeviceByID(deviceID string) *Device
 }
 
 // DeviceCapabilities defines methods for checking device capabilities.
