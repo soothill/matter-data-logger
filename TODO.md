@@ -266,20 +266,31 @@ This document tracks code improvement opportunities identified through comprehen
 - [ ] **Issue**: Continues writing even when InfluxDB consistently fails
 - [ ] **Fix**: Implement circuit breaker (e.g., `github.com/sony/gobreaker`)
 
-### 22. Use Consistent Error Wrapping
-- [ ] **Files**: Multiple
-- [ ] **Issue**: Inconsistent use of `%w` vs `%v` in error formatting
-- [ ] **Fix**: Use `%w` consistently with `fmt.Errorf` for error chains
+### 22. ✅ Use Consistent Error Wrapping - COMPLETED
+- [x] **Files**: Multiple
+- [x] **Issue**: Inconsistent use of `%w` vs `%v` in error formatting
+- [x] **Fix**: Completed in commit `bfa4003`
+  - Fixed storage/cache.go:323 to use `%w` for both errors in combined error message
+  - Ensures proper error chain unwrapping with errors.Is() and errors.As()
+  - All tests passing, linter clean
 
-### 23. Add Context Checks in Monitoring Loops
-- [ ] **File**: `monitoring/power.go:124-149`
-- [ ] **Issue**: Doesn't check context before expensive operations
-- [ ] **Fix**: Add context check after ticker fires
+### 23. ✅ Add Context Checks in Monitoring Loops - COMPLETED
+- [x] **File**: `monitoring/power.go:124-149`, `main.go`, `storage/cache.go`
+- [x] **Issue**: Doesn't check context before expensive operations
+- [x] **Fix**: Completed in commit `e67fa94`
+  - Added context checks after ticker fires in monitoring/power.go
+  - Added context checks before periodic discovery in main.go
+  - Added context checks before health check operations in storage/cache.go
+  - Improves graceful shutdown responsiveness by exiting immediately when context is cancelled
 
-### 24. Fix Device Name Staleness
-- [ ] **File**: `monitoring/power.go`
-- [ ] **Issue**: Device name copied at start, won't update if renamed
-- [ ] **Fix**: Fetch fresh device info or add device update mechanism
+### 24. ✅ Fix Device Name Staleness - COMPLETED
+- [x] **File**: `monitoring/power.go`, `discovery/discovery.go`, `pkg/interfaces/discovery.go`
+- [x] **Issue**: Device name copied at start, won't update if renamed
+- [x] **Fix**: Completed in commit `43426f8`
+  - Added GetDeviceByID() method to Scanner
+  - PowerMonitor now queries Scanner for fresh device info on each reading
+  - Ensures power readings reflect current device names even if devices are renamed
+  - Updated all tests with mock scanner implementation
 
 ### 25. Add Missing Error Context
 - [ ] **Files**: Multiple
@@ -521,14 +532,14 @@ This document tracks code improvement opportunities identified through comprehen
 ## Completion Tracking
 
 - Total Items: 65
-- **Completed**: 24 items ✅
+- **Completed**: 27 items ✅
 - **In Progress**: 0 items
-- **Remaining**: 41 items
+- **Remaining**: 38 items
 
 ### By Priority:
 - Critical (🔴): 5/5 completed (100%) ✅
 - High (🟠): 14/14 completed (100%) ✅ **ALL HIGH PRIORITY ITEMS DONE!**
-- Medium (🟡): 5/16 completed (31%)
+- Medium (🟡): 8/16 completed (50%) 🎯
 - Low (🟢): 0/22 completed (0%)
 - Features (🌟): 0/8 completed (0%)
 
@@ -540,6 +551,9 @@ This document tracks code improvement opportunities identified through comprehen
 23. ✅ Initialize Global Logger Safely (#17) - Completed in commit `3fc2756`
 24. ✅ Add Context to Async Operations (#14) - Completed in commit `59f8d7c`
 25. ✅ Add Tests for Main Package (#6) - 0% → 23.3% - Completed in commits `922b94d`, `13a7bdd`
+26. ✅ Use Consistent Error Wrapping (#22) - Completed in commit `bfa4003`
+27. ✅ Add Context Checks in Monitoring Loops (#23) - Completed in commit `e67fa94`
+28. ✅ Fix Device Name Staleness (#24) - Completed in commit `43426f8`
 
 ### Previously Completed Items (commit `c09c86c`):
 16. ✅ Define Interfaces for External Dependencies (#12e)
@@ -571,7 +585,7 @@ This document tracks code improvement opportunities identified through comprehen
 
 This TODO list was generated through comprehensive static analysis of the codebase on 2025-11-11. Items are organized by priority, with critical security and data loss issues at the top.
 
-**Last Updated**: 2025-11-11 (24 items completed - ALL HIGH PRIORITY ITEMS DONE! 🎉)
+**Last Updated**: 2025-11-11 (27 items completed - ALL HIGH PRIORITY ITEMS DONE! Medium priority 50% complete! 🎉)
 
 The codebase is generally well-structured and follows good Go practices. These improvements will enhance security, reliability, testability, and maintainability.
 
@@ -599,12 +613,12 @@ The codebase is generally well-structured and follows good Go practices. These i
 **Recommended Approach**:
 1. ✅ ~~Start with all 🔴 CRITICAL items~~ (COMPLETED!)
 2. ✅ ~~Continue with 🟠 HIGH priority items~~ (COMPLETED - 14/14 done, 100%! 🎉)
-3. 🎯 **NOW**: Address 🟡 MEDIUM items in batches (5/16 completed)
+3. 🎯 **NOW**: Address 🟡 MEDIUM items in batches (8/16 completed - 50%!)
 4. Consider 🟢 LOW and 🌟 FEATURE items as time permits
 
 **Next Focus Areas**:
 - Rate limiting on health endpoints (#18)
 - Improve Flux query safety (#20)
 - Circuit breaker for InfluxDB (#21)
-- Consistent error wrapping (#22)
-- Context checks in monitoring loops (#23)
+- Make channel sizes configurable (#28)
+- Add metrics cardinality limits (#29)
