@@ -89,12 +89,16 @@ func (c *Config) applyEnvironmentOverrides() {
 		duration, parseErr := time.ParseDuration(interval)
 		if parseErr == nil {
 			c.Matter.DiscoveryInterval = duration
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to parse MATTER_DISCOVERY_INTERVAL '%s': %v\n", interval, parseErr)
 		}
 	}
 	if interval := os.Getenv("MATTER_POLL_INTERVAL"); interval != "" {
 		duration, parseErr := time.ParseDuration(interval)
 		if parseErr == nil {
 			c.Matter.PollInterval = duration
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to parse MATTER_POLL_INTERVAL '%s': %v\n", interval, parseErr)
 		}
 	}
 }
@@ -149,6 +153,12 @@ func (c *Config) Validate() error {
 	if c.InfluxDB.Token == "" {
 		return fmt.Errorf("influxdb.token is required")
 	}
+
+	// Validate token format (basic check for minimum length)
+	if len(c.InfluxDB.Token) < 8 {
+		return fmt.Errorf("influxdb.token must be at least 8 characters long")
+	}
+
 	if c.InfluxDB.Organization == "" {
 		return fmt.Errorf("influxdb.organization is required")
 	}
@@ -160,8 +170,14 @@ func (c *Config) Validate() error {
 	if c.Matter.DiscoveryInterval < time.Second {
 		return fmt.Errorf("matter.discovery_interval must be at least 1 second")
 	}
+	if c.Matter.DiscoveryInterval > 24*time.Hour {
+		return fmt.Errorf("matter.discovery_interval must not exceed 24 hours")
+	}
 	if c.Matter.PollInterval < time.Second {
 		return fmt.Errorf("matter.poll_interval must be at least 1 second")
+	}
+	if c.Matter.PollInterval > 1*time.Hour {
+		return fmt.Errorf("matter.poll_interval must not exceed 1 hour")
 	}
 	if c.Matter.DiscoveryInterval < c.Matter.PollInterval {
 		return fmt.Errorf("matter.discovery_interval should be greater than or equal to matter.poll_interval")
