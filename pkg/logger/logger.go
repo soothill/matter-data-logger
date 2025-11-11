@@ -19,6 +19,18 @@ var (
 	errInvalidLogLevel = errors.New("invalid log level")
 )
 
+// init initializes the logger with a default configuration to prevent panics
+// before Initialize() is called. The logger will be reconfigured when Initialize() is called.
+func init() {
+	// Set up a default logger that writes to stdout at info level
+	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
+	log = zerolog.New(output).
+		Level(zerolog.InfoLevel).
+		With().
+		Timestamp().
+		Logger()
+}
+
 // Initialize sets up the global logger with the specified level
 func Initialize(level string) {
 	// Parse log level
