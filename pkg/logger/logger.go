@@ -2,6 +2,101 @@
 // Licensed under the MIT License
 
 // Package logger provides structured logging using zerolog.
+//
+// This package wraps zerolog to provide a consistent logging interface across
+// the application with structured JSON logging, configurable log levels, and
+// console-friendly formatting for development.
+//
+// # Logging Levels
+//
+// Supported log levels (from least to most verbose):
+//   - panic: Logs and immediately panics
+//   - fatal: Logs and exits with os.Exit(1)
+//   - error: Error conditions requiring attention
+//   - warn/warning: Warning messages for potential issues
+//   - info: Informational messages (default level)
+//   - debug: Detailed debugging information
+//
+// # Configuration
+//
+// The logger is configured via the Initialize() function, typically called
+// during application startup with the log level from configuration:
+//
+//	logger.Initialize("info")  // Set log level to info
+//
+// The log level can be set via:
+//  1. config.yaml: logging.level
+//  2. Environment variable: LOG_LEVEL
+//  3. Default: info
+//
+// # Safe Initialization
+//
+// The logger uses an init() function to set up a safe default configuration
+// that prevents panics if logging functions are called before Initialize().
+// This default configuration logs at info level to stdout.
+//
+// # Structured Logging
+//
+// The logger supports structured logging with typed fields:
+//
+//	logger.Info().
+//	    Str("device_id", "device-1").
+//	    Float64("power", 100.5).
+//	    Msg("Power reading recorded")
+//
+// Common field methods:
+//   - Str(), Strs(): String values
+//   - Int(), Int64(): Integer values
+//   - Float64(): Floating-point values
+//   - Bool(): Boolean values
+//   - Dur(): Duration values
+//   - Time(): Time values
+//   - Err(): Error values (special formatting)
+//
+// # Output Format
+//
+// The logger outputs human-readable console format with:
+//   - RFC3339 timestamps
+//   - Color-coded log levels (when terminal supports it)
+//   - Caller information (file:line) for debugging
+//   - Structured key-value pairs
+//
+// Example output:
+//   2025-11-11T10:30:45-08:00 INF Power reading recorded device_id=device-1 power=100.5
+//
+// # Global Logger Access
+//
+// The package provides convenience functions that wrap the global logger:
+//   - Debug(), Info(), Warn(), Error(), Fatal()
+//   - Get() for advanced usage
+//   - With() for creating child loggers with preset fields
+//
+// # Thread Safety
+//
+// All logger operations are thread-safe and can be called concurrently from
+// multiple goroutines. Zerolog uses lock-free operations for high performance.
+//
+// # Example Usage
+//
+// Basic logging:
+//
+//	logger.Info().Msg("Application started")
+//	logger.Warn().Str("config_file", path).Msg("Using default config")
+//	logger.Error().Err(err).Msg("Failed to connect to database")
+//
+// Structured logging with multiple fields:
+//
+//	logger.Info().
+//	    Str("device_id", deviceID).
+//	    Str("device_name", deviceName).
+//	    Float64("power_w", reading.Power).
+//	    Float64("voltage_v", reading.Voltage).
+//	    Msg("Power reading")
+//
+// Child loggers with preset fields:
+//
+//	deviceLogger := logger.With().Str("device_id", deviceID).Logger()
+//	deviceLogger.Info().Msg("Starting monitoring")  // Includes device_id automatically
 package logger
 
 import (

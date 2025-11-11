@@ -2,6 +2,143 @@
 // Licensed under the MIT License
 
 // Matter Power Data Logger discovers Matter devices and logs their power consumption.
+//
+// This application automatically discovers Matter-compatible smart home devices on the
+// local network via mDNS, monitors their power consumption in real-time, and stores
+// the data in InfluxDB for analysis and visualization.
+//
+// # Application Architecture
+//
+// The application uses a concurrent, goroutine-based architecture:
+//   - Main goroutine: Coordinates startup, shutdown, and periodic discovery
+//   - HTTP server goroutine: Serves metrics and health endpoints
+//   - Data writer goroutine: Consumes power readings and writes to InfluxDB
+//   - Per-device monitor goroutines: Poll individual devices for power data
+//   - Background health monitor: Checks InfluxDB availability and replays cache
+//
+// # Startup Flow
+//
+//  1. Parse command-line flags (config path, metrics port, health-check mode)
+//  2. Load and validate configuration from YAML + environment variables
+//  3. Initialize logger with configured log level
+//  4. Initialize components:
+//     - Slack notifier for alerts
+//     - InfluxDB client with circuit breaker
+//     - Local cache for offline resilience
+//     - HTTP server with rate-limited endpoints
+//  5. Start HTTP server for Prometheus metrics and health checks
+//  6. Perform initial device discovery via mDNS
+//  7. Start monitoring discovered power devices
+//  8. Enter main loop for periodic discovery
+//
+// # Graceful Shutdown
+//
+// The application handles SIGTERM and SIGINT for graceful shutdown:
+//  1. Signal received, cancel main context
+//  2. HTTP server stops accepting new connections (5s timeout)
+//  3. Power monitor stops all device polling goroutines
+//  4. Data writer drains remaining readings channel
+//  5. InfluxDB flush with timeout (10s)
+//  6. Wait for all goroutines to finish
+//  7. Close database connections
+//  8. Exit cleanly
+//
+// # Configuration
+//
+// Configuration is loaded from config.yaml with environment variable overrides:
+//   - InfluxDB connection (URL, token, org, bucket)
+//   - Matter discovery settings (intervals, service type)
+//   - Logging level
+//   - Slack webhook URL for notifications
+//   - Local cache settings
+//
+// See config/config.go for full configuration options.
+//
+// # HTTP Endpoints
+//
+// The application exposes three endpoints on localhost:9090 (configurable):
+//
+// GET /metrics - Prometheus metrics:
+//   - Device discovery metrics
+//   - Power reading counts
+//   - InfluxDB write metrics
+//   - Current power/voltage/current per device
+//
+// GET /health - Basic health check:
+//   - Always returns 200 OK if application is running
+//   - Rate limited: 10 req/sec with burst of 20
+//
+// GET /ready - Readiness check:
+//   - Returns 200 READY if InfluxDB is healthy
+//   - Returns 503 NOT READY if InfluxDB is down
+//   - Rate limited: 10 req/sec with burst of 20
+//   - Used by Kubernetes/Docker for deployment readiness
+//
+// # Local Cache and Failover
+//
+// When InfluxDB is unavailable:
+//  1. Readings are automatically written to local JSON cache
+//  2. Slack notification sent on first failure
+//  3. Background monitor checks InfluxDB health every 30s
+//  4. When healthy, cached readings are replayed in order
+//  5. Slack recovery notification sent
+//  6. Normal operation resumes
+//
+// # Security Features
+//
+//   - Rate limiting on health endpoints to prevent DoS
+//   - Circuit breaker for InfluxDB to prevent cascade failures
+//   - Metrics endpoint bound to localhost only (requires reverse proxy for external access)
+//   - TLS validation for non-local InfluxDB connections
+//   - Input sanitization for Flux queries
+//   - Validation of negative power readings
+//
+// # Command-Line Usage
+//
+// Start application with default config:
+//
+//	./matter-data-logger
+//
+// Specify custom config file:
+//
+//	./matter-data-logger -config /path/to/config.yaml
+//
+// Custom metrics port:
+//
+//	./matter-data-logger -metrics-port 8080
+//
+// Health check mode (for Docker/K8s):
+//
+//	./matter-data-logger -health-check
+//
+// # Environment Variables
+//
+// Override configuration via environment variables:
+//   - INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG, INFLUXDB_BUCKET
+//   - LOG_LEVEL
+//   - MATTER_DISCOVERY_INTERVAL, MATTER_POLL_INTERVAL
+//   - SLACK_WEBHOOK_URL
+//   - CACHE_DIRECTORY
+//
+// See config/config.go for complete list.
+//
+// # Development
+//
+// Run tests:
+//
+//	make test
+//
+// Run integration tests (requires Docker):
+//
+//	make test-integration
+//
+// Run linter:
+//
+//	make lint
+//
+// Build:
+//
+//	make build
 package main
 
 import (
