@@ -5,6 +5,7 @@
 package logger
 
 import (
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -13,13 +14,20 @@ import (
 	"github.com/rs/zerolog"
 )
 
-var log zerolog.Logger
+var (
+	log                 zerolog.Logger
+	errInvalidLogLevel = errors.New("invalid log level")
+)
 
 // Initialize sets up the global logger with the specified level
 func Initialize(level string) {
 	// Parse log level
 	logLevel, err := parseLogLevel(level)
 	if err != nil {
+		// Create a temporary logger to warn about invalid level
+		tempOutput := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
+		tempLog := zerolog.New(tempOutput).With().Timestamp().Logger()
+		tempLog.Warn().Str("invalid_level", level).Str("using", "info").Msg("Invalid log level, defaulting to info")
 		logLevel = zerolog.InfoLevel
 	}
 
@@ -50,8 +58,11 @@ func parseLogLevel(level string) (zerolog.Level, error) {
 		return zerolog.FatalLevel, nil
 	case "panic":
 		return zerolog.PanicLevel, nil
-	default:
+	case "":
+		// Empty string is acceptable, default to info without warning
 		return zerolog.InfoLevel, nil
+	default:
+		return zerolog.InfoLevel, errInvalidLogLevel
 	}
 }
 
