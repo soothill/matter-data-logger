@@ -417,7 +417,7 @@ matter-data-logger/
 The project uses GitHub Actions for continuous integration and deployment:
 
 - **CI Workflow**: Runs on every push and PR
-  - Tests on Go 1.22 and 1.23 (with toolchain auto-download for 1.24+)
+  - Tests on Go 1.24.x
   - Security scanning with govulncheck
   - Linting with golangci-lint v1.61
   - Multi-platform builds (Linux/AMD64, ARM64, ARMv7)
