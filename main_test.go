@@ -17,6 +17,7 @@ import (
 	"github.com/soothill/matter-data-logger/discovery"
 	"github.com/soothill/matter-data-logger/monitoring"
 	"github.com/soothill/matter-data-logger/storage"
+	"golang.org/x/time/rate"
 )
 
 func TestHealthCheckHandler(t *testing.T) {
@@ -402,4 +403,120 @@ cache:
 	if cfg.Matter.ServiceType != "_matter._tcp" {
 		t.Errorf("ServiceType = %s, want _matter._tcp", cfg.Matter.ServiceType)
 	}
+}
+
+func TestRateLimitMiddleware_WithinLimit(t *testing.T) {
+	// Create a rate limiter that allows 10 requests per second with burst of 20
+	limiter := rate.NewLimiter(10, 20)
+
+	// Create a test handler
+	testHandler := func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+	}
+
+	// Wrap with rate limiting
+	rateLimitedHandler := rateLimitMiddleware(limiter, testHandler)
+
+	// Make a request within the limit
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	w := httptest.NewRecorder()
+
+	rateLimitedHandler(w, req)
+
+	resp := w.Result()
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("rateLimitMiddleware() status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	if w.Body.String() != "OK" {
+		t.Errorf("rateLimitMiddleware() body = %s, want OK", w.Body.String())
+	}
+}
+
+func TestRateLimitMiddleware_ExceedLimit(t *testing.T) {
+	// Create a rate limiter with very low limits: 1 request per second, burst of 1
+	limiter := rate.NewLimiter(1, 1)
+
+	// Create a test handler
+	testHandler := func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+	}
+
+	// Wrap with rate limiting
+	rateLimitedHandler := rateLimitMiddleware(limiter, testHandler)
+
+	// First request should succeed
+	req1 := httptest.NewRequest(http.MethodGet, "/health", nil)
+	w1 := httptest.NewRecorder()
+	rateLimitedHandler(w1, req1)
+
+	if w1.Code != http.StatusOK {
+		t.Errorf("First request: status = %d, want %d", w1.Code, http.StatusOK)
+	}
+
+	// Second request should be rate limited (burst is exhausted)
+	req2 := httptest.NewRequest(http.MethodGet, "/health", nil)
+	w2 := httptest.NewRecorder()
+	rateLimitedHandler(w2, req2)
+
+	if w2.Code != http.StatusTooManyRequests {
+		t.Errorf("Second request: status = %d, want %d", w2.Code, http.StatusTooManyRequests)
+	}
+
+	if !contains(w2.Body.String(), "Rate limit exceeded") {
+		t.Errorf("Second request: body = %s, want to contain 'Rate limit exceeded'", w2.Body.String())
+	}
+}
+
+func TestRateLimitMiddleware_BurstCapacity(t *testing.T) {
+	// Create a rate limiter with burst capacity
+	limiter := rate.NewLimiter(1, 5) // 1 per second, burst of 5
+
+	// Create a test handler
+	testHandler := func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+	}
+
+	// Wrap with rate limiting
+	rateLimitedHandler := rateLimitMiddleware(limiter, testHandler)
+
+	// First 5 requests should succeed (within burst)
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		w := httptest.NewRecorder()
+		rateLimitedHandler(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Request %d: status = %d, want %d", i+1, w.Code, http.StatusOK)
+		}
+	}
+
+	// 6th request should be rate limited
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	w := httptest.NewRecorder()
+	rateLimitedHandler(w, req)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Errorf("Request 6: status = %d, want %d", w.Code, http.StatusTooManyRequests)
+	}
+}
+
+// Helper function to check if a string contains a substring
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > 0 && len(substr) > 0 && containsHelper(s, substr)))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/soothill/matter-data-logger/pkg/metrics"
 	"github.com/soothill/matter-data-logger/pkg/notifications"
 	"github.com/soothill/matter-data-logger/storage"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -33,6 +34,22 @@ const (
 	shutdownTimeout        = 5 * time.Second
 	flushTimeout           = 10 * time.Second
 )
+
+// rateLimitMiddleware wraps an HTTP handler with rate limiting
+// Returns HTTP 429 (Too Many Requests) when the rate limit is exceeded
+func rateLimitMiddleware(limiter *rate.Limiter, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !limiter.Allow() {
+			logger.Warn().
+				Str("path", r.URL.Path).
+				Str("remote_addr", r.RemoteAddr).
+				Msg("Rate limit exceeded for health endpoint")
+			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+			return
+		}
+		next(w, r)
+	}
+}
 
 // initializeComponents initializes all application components
 // Returns an error instead of calling Fatal() to allow for testing
@@ -78,13 +95,18 @@ func initializeComponents(cfg *config.Config, metricsPort string) (*notification
 	// Wrap InfluxDB storage with caching layer
 	db := storage.NewCachingStorage(influxDB, cache, notifier)
 
+	// Create rate limiters for health endpoints
+	// 10 requests per second with burst of 20 to prevent abuse/DoS
+	healthLimiter := rate.NewLimiter(10, 20)
+	readyLimiter := rate.NewLimiter(10, 20)
+
 	// Setup HTTP handlers
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
-	mux.HandleFunc("/health", healthCheckHandler)
-	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/health", rateLimitMiddleware(healthLimiter, healthCheckHandler))
+	mux.HandleFunc("/ready", rateLimitMiddleware(readyLimiter, func(w http.ResponseWriter, r *http.Request) {
 		readinessCheckHandler(w, r, influxDB)
-	})
+	}))
 
 	// Create HTTP server with localhost binding for security
 	// Bind to localhost to prevent exposing metrics to external networks
