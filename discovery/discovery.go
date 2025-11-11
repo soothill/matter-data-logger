@@ -74,7 +74,8 @@ func (s *Scanner) Discover(ctx context.Context, timeout time.Duration) ([]*Devic
 		return nil, fmt.Errorf("failed to create resolver: %w", err)
 	}
 
-	entries := make(chan *zeroconf.ServiceEntry)
+	// Buffered channel to prevent blocking zeroconf resolver
+	entries := make(chan *zeroconf.ServiceEntry, 10)
 	var discoveredDevices []*Device
 	var mu sync.Mutex // Protects discoveredDevices slice
 	var wg sync.WaitGroup

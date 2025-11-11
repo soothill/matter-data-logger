@@ -6,7 +6,9 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -87,12 +89,16 @@ func (c *Config) applyEnvironmentOverrides() {
 		duration, parseErr := time.ParseDuration(interval)
 		if parseErr == nil {
 			c.Matter.DiscoveryInterval = duration
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to parse MATTER_DISCOVERY_INTERVAL '%s': %v\n", interval, parseErr)
 		}
 	}
 	if interval := os.Getenv("MATTER_POLL_INTERVAL"); interval != "" {
 		duration, parseErr := time.ParseDuration(interval)
 		if parseErr == nil {
 			c.Matter.PollInterval = duration
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to parse MATTER_POLL_INTERVAL '%s': %v\n", interval, parseErr)
 		}
 	}
 }
@@ -122,9 +128,37 @@ func (c *Config) Validate() error {
 	if c.InfluxDB.URL == "" {
 		return fmt.Errorf("influxdb.url is required")
 	}
+
+	// Validate URL format and security
+	parsedURL, err := url.Parse(c.InfluxDB.URL)
+	if err != nil {
+		return fmt.Errorf("influxdb.url is not a valid URL: %w", err)
+	}
+
+	// Check for HTTPS in production-like URLs (not localhost/127.0.0.1)
+	if parsedURL.Scheme == "http" {
+		hostname := strings.ToLower(parsedURL.Hostname())
+		isLocal := hostname == "localhost" ||
+			hostname == "127.0.0.1" ||
+			hostname == "::1" ||
+			strings.HasPrefix(hostname, "192.168.") ||
+			strings.HasPrefix(hostname, "10.") ||
+			strings.HasPrefix(hostname, "172.")
+
+		if !isLocal {
+			return fmt.Errorf("influxdb.url must use HTTPS for non-local connections (got %s). Using HTTP transmits credentials in plaintext and is a security risk", parsedURL.Scheme)
+		}
+	}
+
 	if c.InfluxDB.Token == "" {
 		return fmt.Errorf("influxdb.token is required")
 	}
+
+	// Validate token format (basic check for minimum length)
+	if len(c.InfluxDB.Token) < 8 {
+		return fmt.Errorf("influxdb.token must be at least 8 characters long")
+	}
+
 	if c.InfluxDB.Organization == "" {
 		return fmt.Errorf("influxdb.organization is required")
 	}
@@ -136,8 +170,14 @@ func (c *Config) Validate() error {
 	if c.Matter.DiscoveryInterval < time.Second {
 		return fmt.Errorf("matter.discovery_interval must be at least 1 second")
 	}
+	if c.Matter.DiscoveryInterval > 24*time.Hour {
+		return fmt.Errorf("matter.discovery_interval must not exceed 24 hours")
+	}
 	if c.Matter.PollInterval < time.Second {
 		return fmt.Errorf("matter.poll_interval must be at least 1 second")
+	}
+	if c.Matter.PollInterval > 1*time.Hour {
+		return fmt.Errorf("matter.poll_interval must not exceed 1 hour")
 	}
 	if c.Matter.DiscoveryInterval < c.Matter.PollInterval {
 		return fmt.Errorf("matter.discovery_interval should be greater than or equal to matter.poll_interval")
