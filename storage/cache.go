@@ -340,9 +340,9 @@ func (cs *CachingStorage) WriteReading(ctx context.Context, reading *monitoring.
 // WriteBatch writes multiple readings
 // The context can be used for cancellation and timeout control
 func (cs *CachingStorage) WriteBatch(ctx context.Context, readings []*monitoring.PowerReading) error {
-	for _, reading := range readings {
+	for i, reading := range readings {
 		if err := cs.WriteReading(ctx, reading); err != nil {
-			return err
+			return fmt.Errorf("failed to write reading %d/%d (device_id=%s): %w", i+1, len(readings), reading.DeviceID, err)
 		}
 	}
 	return nil
