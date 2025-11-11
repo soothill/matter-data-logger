@@ -322,24 +322,6 @@ func setupSignalHandler(server *http.Server, monitor *monitoring.PowerMonitor, c
 	}()
 }
 
-// setupDebugSignalHandlers sets up debug signal handlers (SIGUSR1, SIGUSR2)
-// SIGUSR1: Dump current application state (devices, monitoring stats)
-// SIGUSR2: Dump goroutine stack traces
-func setupDebugSignalHandlers(scanner *discovery.Scanner, monitor *monitoring.PowerMonitor) {
-	debugSigChan := make(chan os.Signal, 2) // Buffer for 2 signals
-	signal.Notify(debugSigChan, syscall.SIGUSR1, syscall.SIGUSR2)
-	go func() {
-		for sig := range debugSigChan {
-			switch sig {
-			case syscall.SIGUSR1:
-				dumpApplicationState(scanner, monitor)
-			case syscall.SIGUSR2:
-				dumpGoroutineStackTraces()
-			}
-		}
-	}()
-}
-
 // dumpApplicationState dumps current application state to logs
 // Triggered by SIGUSR1: kill -USR1 <pid>
 func dumpApplicationState(scanner *discovery.Scanner, monitor *monitoring.PowerMonitor) {
