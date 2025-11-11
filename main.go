@@ -49,7 +49,8 @@ func main() {
 		Msg("Configuration loaded")
 
 	// Initialize InfluxDB storage
-	db, err := storage.NewInfluxDBStorage(
+	var db *storage.InfluxDBStorage
+	db, err = storage.NewInfluxDBStorage(
 		cfg.InfluxDB.URL,
 		cfg.InfluxDB.Token,
 		cfg.InfluxDB.Organization,
@@ -148,11 +149,11 @@ func main() {
 func performInitialDiscovery(ctx context.Context, scanner *discovery.Scanner, monitor *monitoring.PowerMonitor) {
 	logger.Info().Msg("Performing initial device discovery")
 	start := time.Now()
-	devices, err := scanner.Discover(ctx, 10*time.Second)
+	devices, discoverErr := scanner.Discover(ctx, 10*time.Second)
 	metrics.DiscoveryDuration.Observe(time.Since(start).Seconds())
 
-	if err != nil {
-		logger.Error().Err(err).Msg("Initial discovery failed")
+	if discoverErr != nil {
+		logger.Error().Err(discoverErr).Msg("Initial discovery failed")
 	} else {
 		logger.Info().Int("count", len(devices)).Msg("Discovered Matter devices")
 		metrics.DevicesDiscovered.Set(float64(len(scanner.GetDevices())))
@@ -175,11 +176,11 @@ func performInitialDiscovery(ctx context.Context, scanner *discovery.Scanner, mo
 func performPeriodicDiscovery(ctx context.Context, scanner *discovery.Scanner, monitor *monitoring.PowerMonitor) {
 	logger.Info().Msg("Performing periodic device discovery")
 	start := time.Now()
-	newDevices, err := scanner.Discover(ctx, 10*time.Second)
+	newDevices, discoverErr := scanner.Discover(ctx, 10*time.Second)
 	metrics.DiscoveryDuration.Observe(time.Since(start).Seconds())
 
-	if err != nil {
-		logger.Error().Err(err).Msg("Discovery failed")
+	if discoverErr != nil {
+		logger.Error().Err(discoverErr).Msg("Discovery failed")
 		return
 	}
 
@@ -208,8 +209,8 @@ func performPeriodicDiscovery(ctx context.Context, scanner *discovery.Scanner, m
 // healthCheckHandler handles health check requests
 func healthCheckHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write([]byte("OK")); err != nil {
-		logger.Error().Err(err).Msg("Failed to write health check response")
+	if _, writeErr := w.Write([]byte("OK")); writeErr != nil {
+		logger.Error().Err(writeErr).Msg("Failed to write health check response")
 	}
 }
 
@@ -219,8 +220,8 @@ func readinessCheckHandler(w http.ResponseWriter, _ *http.Request, db *storage.I
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	if err := db.Health(ctx); err != nil {
-		logger.Warn().Err(err).Msg("Readiness check failed: InfluxDB unhealthy")
+	if healthErr := db.Health(ctx); healthErr != nil {
+		logger.Warn().Err(healthErr).Msg("Readiness check failed: InfluxDB unhealthy")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		if _, writeErr := w.Write([]byte("NOT READY: InfluxDB unhealthy")); writeErr != nil {
 			logger.Error().Err(writeErr).Msg("Failed to write readiness check response")
@@ -229,8 +230,8 @@ func readinessCheckHandler(w http.ResponseWriter, _ *http.Request, db *storage.I
 	}
 
 	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write([]byte("READY")); err != nil {
-		logger.Error().Err(err).Msg("Failed to write readiness check response")
+	if _, writeErr := w.Write([]byte("READY")); writeErr != nil {
+		logger.Error().Err(writeErr).Msg("Failed to write readiness check response")
 	}
 }
 

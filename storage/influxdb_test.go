@@ -534,7 +534,7 @@ func TestHealth_WithContext(t *testing.T) {
 	// Cancel the context
 	cancel()
 
-	// Verify context is cancelled
+	// Verify context is canceled
 	select {
 	case <-ctx.Done():
 		// Expected: context is done
