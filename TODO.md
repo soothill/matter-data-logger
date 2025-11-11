@@ -8,7 +8,7 @@ This document tracks code improvement opportunities identified through comprehen
 ## Project Overview
 - **Type**: Go 1.24.0 (toolchain 1.24.8) Matter Power Data Logger
 - **LOC**: ~2,507 lines
-- **Test Coverage**: 67% average (main: 0%, storage: 12.5%, discovery: 37.5%)
+- **Test Coverage**: 67% average (main: 2.2%, storage: 8.1%, discovery: 93.8%, monitoring: 79.5%)
 - **Purpose**: Discovers Matter devices via mDNS, monitors power consumption, stores in InfluxDB
 
 ---
@@ -64,34 +64,50 @@ This document tracks code improvement opportunities identified through comprehen
 
 ## 🟠 HIGH PRIORITY
 
-### 6. Add Tests for Main Package (0% Coverage)
-- [ ] **File**: `main.go`
-- [ ] **Issue**: No tests for application initialization, signal handling, graceful shutdown
-- [ ] **Fix**: Create `main_test.go` with tests for:
+### 6. 🔶 Add Tests for Main Package (2.2% Coverage - In Progress)
+- [x] **File**: `main.go`, `main_test.go`
+- [x] **Issue**: No tests for application initialization, signal handling, graceful shutdown
+- [x] **Progress**: Completed in commit `c09c86c` - Initial tests added:
+  - ✅ Health check endpoint (TestHealthCheckHandler)
+  - ✅ Readiness check endpoint (TestReadinessCheckHandler_NoInfluxDB)
+  - ✅ Health check function (TestPerformHealthCheck)
+  - ✅ Graceful shutdown (TestPerformGracefulShutdown)
+  - ✅ Cleanup function (TestPerformCleanup)
+- [ ] **Remaining**: Additional tests needed for 80% target:
   - Configuration loading and validation
   - Signal handling (SIGTERM, SIGINT)
-  - Graceful shutdown flow
-  - Health check endpoints
-  - Component integration
+  - Complete startup flow
+  - Data writer integration
 
-### 7. Improve Storage Package Test Coverage (12.5%)
-- [ ] **File**: `storage/influxdb.go`, `storage/influxdb_test.go`
-- [ ] **Issue**: Critical data persistence layer poorly tested
-- [ ] **Fix**: Add integration tests with testcontainers:
-  - Actual write operations
-  - Connection pooling
-  - Error recovery
-  - Batch writes
-  - Query operations
+### 7. ✅ Improve Storage Package Test Coverage - COMPLETED
+- [x] **Files**: `storage/influxdb.go`, `storage/influxdb_test.go`, `storage/influxdb_integration_test.go`
+- [x] **Issue**: Critical data persistence layer poorly tested (was 8.1%)
+- [x] **Fix**: Completed - Added comprehensive integration tests achieving 72.3% coverage:
+  - ✅ Actual write operations with real InfluxDB container
+  - ✅ Connection and health checks
+  - ✅ Validation error handling (nil, empty fields, negative values)
+  - ✅ Batch write operations
+  - ✅ Query operations (QueryLatestReading)
+  - ✅ Close/Flush idempotency
+  - ✅ Client accessor method
+  - ✅ Context handling with timeouts
+  - ✅ Added testcontainers-go for integration testing
+  - ✅ Fixed Close() bug (double-close panic)
+  - ✅ Added Makefile targets: `make test-integration`, `make test-integration-coverage`
+- **Result**: Coverage improved from 8.1% to 72.3% (8.9x improvement!)
+- **Note**: Remaining gaps (28%) are in retry logic and error handling goroutines which are difficult to test reliably
 
-### 8. Improve Discovery Package Test Coverage (37.5%)
-- [ ] **File**: `discovery/discovery.go`
-- [ ] **Issue**: Core functionality insufficiently tested
-- [ ] **Fix**: Add tests for:
-  - Actual mDNS discovery (using mock zeroconf)
-  - Service entry parsing edge cases
-  - Concurrent device updates
-  - IPv6 handling
+### 8. ✅ Improve Discovery Package Test Coverage - COMPLETED
+- [x] **File**: `discovery/discovery.go`, `discovery/discovery_test.go`
+- [x] **Issue**: Core functionality insufficiently tested
+- [x] **Fix**: Completed in commit `c09c86c` - Comprehensive tests added achieving 93.8% coverage (exceeds 85% target):
+  - ✅ mDNS discovery with timeout and cancellation
+  - ✅ Service entry parsing edge cases
+  - ✅ Power measurement cluster detection
+  - ✅ Device ID generation with fallbacks
+  - ✅ IPv6 address handling
+  - ✅ Multiple discovery runs
+  - ✅ Device filtering and retrieval
 
 ### 9. ✅ Add Input Validation for Power Readings - COMPLETED
 - [x] **File**: `storage/influxdb.go` (WriteReading method)
@@ -157,20 +173,17 @@ This document tracks code improvement opportunities identified through comprehen
   - Added explicit returns after Fatal() calls to satisfy staticcheck
   - All linter warnings resolved
 
-### 12e. Define Interfaces for External Dependencies
-- [ ] **Files**: Multiple
-- [ ] **Issue**: Direct dependencies on concrete types (InfluxDB, zeroconf)
-- [ ] **Impact**: Hard to mock, tight coupling
-- [ ] **Fix**: Define interfaces:
-  ```go
-  type TimeSeriesStorage interface {
-      WriteReading(ctx context.Context, reading *PowerReading) error
-      Close() error
-  }
-  type DeviceDiscoverer interface {
-      Discover(ctx context.Context, service string) ([]*Device, error)
-  }
-  ```
+### 12e. ✅ Define Interfaces for External Dependencies - COMPLETED
+- [x] **Files**: `pkg/interfaces/storage.go`, `pkg/interfaces/discovery.go`, `pkg/interfaces/monitoring.go`
+- [x] **Issue**: Direct dependencies on concrete types (InfluxDB, zeroconf)
+- [x] **Impact**: Hard to mock, tight coupling
+- [x] **Fix**: Completed in commit `c09c86c` - Created comprehensive interface package:
+  - ✅ `TimeSeriesStorage` interface (storage.go) - defines storage contract
+  - ✅ `DeviceScanner` and `DeviceCapabilities` interfaces (discovery.go) - defines discovery contract
+  - ✅ `PowerMonitor` interface (monitoring.go) - defines monitoring contract
+  - ✅ Includes `Device` and `PowerReading` types to avoid circular dependencies
+  - ✅ Full method documentation for implementers
+  - ✅ Foundation for better unit testing and mocking
 
 ### 13. ✅ Fix Goroutine Lifecycle Management - COMPLETED
 - [x] **Files**: `main.go`, `monitoring/power.go`
@@ -454,10 +467,10 @@ This document tracks code improvement opportunities identified through comprehen
 
 | Package | Current | Target | Status |
 |---------|---------|--------|--------|
-| main | 0.0% | 80% | ⚠️ Needs tests |
-| storage | 8.1% | 85% | ⚠️ Needs improvement |
+| main | 2.2% | 80% | 🔶 In progress |
+| storage | 72.3% | 85% | 🔶 Close to target (with integration tests) |
 | discovery | 93.8% | 85% | ✅ Exceeds target |
-| monitoring | 94.9% | 90% | ✅ Exceeds target |
+| monitoring | 79.5% | 90% | 🔶 Close to target |
 | config | 89.8% | 95% | 🔶 Close to target |
 | metrics | 100.0% | 100% | ✅ Perfect |
 | logger | 90.9% | 100% | 🔶 Close to target |
@@ -479,17 +492,27 @@ This document tracks code improvement opportunities identified through comprehen
 ## Completion Tracking
 
 - Total Items: 65 (5 new items added)
-- **Completed**: 15 items ✅
-- **Remaining**: 50 items
+- **Completed**: 18 items ✅
+- **In Progress**: 1 item 🔶
+- **Remaining**: 46 items
 
 ### By Priority:
 - Critical (🔴): 5/5 completed (100%) ✅
-- High (🟠): 10/14 completed (71%) 🔥
+- High (🟠): 12/14 completed (86%) 🔥
+  - 1 item in progress (#6 - Main tests)
+  - 1 item remaining (#14 - Add context)
 - Medium (🟡): 0/16 completed (0%)
 - Low (🟢): 0/22 completed (0%)
 - Features (🌟): 0/8 completed (0%)
 
-### Recently Completed Items (commit `fcec935`):
+### Recently Completed Items (current session):
+18. ✅ Improve Storage Package Test Coverage (#7) - 8.1% → 72.3%
+
+### Previously Completed Items (commit `c09c86c`):
+16. ✅ Define Interfaces for External Dependencies (#12e)
+17. ✅ Improve Discovery Package Test Coverage (#8)
+
+### Previously Completed Items (commit `fcec935`):
 9. ✅ Implement HTTP Server Graceful Shutdown (#12)
 10. ✅ Fix PowerMonitor Channel Closure (#12a)
 11. ✅ Add InfluxDB Flush Timeout (#12b)
@@ -514,34 +537,40 @@ This document tracks code improvement opportunities identified through comprehen
 
 This TODO list was generated through comprehensive static analysis of the codebase on 2025-11-11. Items are organized by priority, with critical security and data loss issues at the top.
 
-**Last Updated**: 2025-11-11 (15 items completed - Major progress on shutdown reliability!)
+**Last Updated**: 2025-11-11 (17 items completed - Interfaces & discovery tests complete!)
 
 The codebase is generally well-structured and follows good Go practices. These improvements will enhance security, reliability, testability, and maintainability.
 
-### Recent Progress (commit `fcec935`)
-**Major improvements to shutdown reliability and security:**
-- ✅ Fixed critical goroutine blocking issues
-- ✅ Implemented graceful HTTP server shutdown
-- ✅ Added proper channel closure in PowerMonitor
-- ✅ Added InfluxDB flush timeout protection
-- ✅ Secured metrics endpoint with localhost-only binding
-- ✅ Fixed all linter warnings and test failures
-- ✅ **Result**: Application now production-ready for containerized deployments
+### Recent Progress (commit `c09c86c`)
+**Major improvements to testability and test coverage:**
+- ✅ Created comprehensive interfaces package for better testability
+  - `pkg/interfaces/storage.go` - TimeSeriesStorage interface
+  - `pkg/interfaces/discovery.go` - DeviceScanner & DeviceCapabilities interfaces
+  - `pkg/interfaces/monitoring.go` - PowerMonitor interface
+- ✅ Added initial main package tests (0% → 2.2% coverage)
+  - Health check endpoints
+  - Graceful shutdown function
+  - Cleanup function
+- ✅ Discovery package now exceeds target (93.8% coverage, target: 85%)
+  - Comprehensive test coverage for all discovery scenarios
+  - Edge case handling verified
 
 **Test Status**:
-- All 89 tests passing ✅
+- All 96 tests passing ✅
 - golangci-lint clean ✅
 - No race conditions detected ✅
 - Overall coverage: 67%
+- Discovery: 93.8% (exceeds 85% target) 🎉
 
 **Recommended Approach**:
 1. ✅ ~~Start with all 🔴 CRITICAL items~~ (COMPLETED!)
-2. ✅ Continue with 🟠 HIGH priority items (10/14 done, 71% complete!) 🔥
+2. 🔥 Continue with 🟠 HIGH priority items (11/14 done, 79% complete!)
+   - 1 in progress: Main package tests
+   - 2 remaining: Storage tests, Context for async operations
 3. Address 🟡 MEDIUM items in batches
 4. Consider 🟢 LOW and 🌟 FEATURE items as time permits
 
 **Next Focus Areas**:
-- Add tests for main package (currently 0% coverage)
-- Improve storage package test coverage (currently 8.1%)
-- Define interfaces for better testability
+- Continue main package tests (2.2% → 80% target)
+- Improve storage package test coverage (8.1% → 85% target)
 - Add context to async operations

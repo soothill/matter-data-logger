@@ -25,14 +25,16 @@ const (
 
 // InfluxDBStorage handles writing power data to InfluxDB
 type InfluxDBStorage struct {
-	client     influxdb2.Client
-	writeAPI   api.WriteAPI
-	bucket     string
-	org        string
-	ctx        context.Context
-	cancel     context.CancelFunc
-	errorWg    sync.WaitGroup
-	retryQueue chan retryItem
+	client      influxdb2.Client
+	writeAPI    api.WriteAPI
+	bucket      string
+	org         string
+	ctx         context.Context
+	cancel      context.CancelFunc
+	errorWg     sync.WaitGroup
+	retryQueue  chan retryItem
+	closed      bool
+	closeMutex  sync.Mutex
 }
 
 type retryItem struct {
@@ -153,6 +155,14 @@ func (s *InfluxDBStorage) Flush() {
 
 // Close closes the InfluxDB client and flushes pending writes
 func (s *InfluxDBStorage) Close() {
+	s.closeMutex.Lock()
+	if s.closed {
+		s.closeMutex.Unlock()
+		return
+	}
+	s.closed = true
+	s.closeMutex.Unlock()
+
 	logger.Info().Msg("Closing InfluxDB connection")
 
 	// Cancel context to stop retry processing

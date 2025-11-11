@@ -1,7 +1,7 @@
 # Copyright (c) 2025 Darren Soothill
 # Licensed under the MIT License
 
-.PHONY: help build test clean run docker-build docker-run lint fmt vet tidy install-tools
+.PHONY: help build test test-integration test-integration-coverage clean run docker-build docker-run lint fmt vet tidy install-tools
 
 # Variables
 BINARY_NAME=matter-data-logger
@@ -50,6 +50,16 @@ test-coverage: ## Run tests with coverage report
 	@go test -v -race -coverprofile=coverage.out ./...
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
+
+test-integration: ## Run integration tests (requires Docker)
+	@echo "Running integration tests..."
+	@go test -v -tags=integration -timeout=15m ./storage
+
+test-integration-coverage: ## Run integration tests with coverage (requires Docker)
+	@echo "Running integration tests with coverage..."
+	@go test -v -tags=integration -coverprofile=coverage-integration.out -timeout=15m ./storage
+	@go tool cover -html=coverage-integration.out -o coverage-integration.html
+	@echo "Integration test coverage report generated: coverage-integration.html"
 
 lint: ## Run linters
 	@echo "Running linters..."
