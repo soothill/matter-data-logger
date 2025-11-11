@@ -320,7 +320,7 @@ func (cs *CachingStorage) WriteReading(ctx context.Context, reading *monitoring.
 	}
 
 	if cacheErr := cs.cache.Write(reading); cacheErr != nil {
-		return fmt.Errorf("influxdb write failed and cache write failed: influxdb=%w, cache=%v", err, cacheErr)
+		return fmt.Errorf("influxdb write failed and cache write failed: influxdb=%w, cache=%w", err, cacheErr)
 	}
 
 	// Check cache size and send warning if needed
