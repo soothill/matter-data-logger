@@ -260,11 +260,17 @@ func main() {
 	configPath := flag.String("config", "config.yaml", "Path to configuration file")
 	metricsPort := flag.String("metrics-port", "9090", "Port for Prometheus metrics endpoint")
 	healthCheck := flag.Bool("health-check", false, "Perform health check and exit")
+	validateConfig := flag.Bool("validate-config", false, "Validate configuration file and exit")
 	flag.Parse()
 
 	// If health-check flag is set, perform check and exit
 	if *healthCheck {
 		os.Exit(performHealthCheck())
+	}
+
+	// If validate-config flag is set, validate configuration and exit
+	if *validateConfig {
+		os.Exit(performConfigValidation(*configPath))
 	}
 
 	// Load configuration
@@ -487,6 +493,51 @@ func readinessCheckHandler(w http.ResponseWriter, _ *http.Request, db *storage.I
 func performHealthCheck() int {
 	// Simple health check for Docker/K8s - just check if we can start
 	// In a more sophisticated implementation, this could check connectivity
+	return 0
+}
+
+// performConfigValidation validates the configuration file and returns exit code
+// Returns 0 if configuration is valid, 1 if invalid
+func performConfigValidation(configPath string) int {
+	// Initialize logger for validation output
+	logger.Initialize("info")
+
+	logger.Info().Str("path", configPath).Msg("Validating configuration file")
+
+	// Attempt to load and validate configuration
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		logger.Error().Err(err).Msg("Configuration validation failed")
+		fmt.Fprintf(os.Stderr, "\n❌ Configuration validation FAILED\n")
+		fmt.Fprintf(os.Stderr, "Error: %v\n\n", err)
+		fmt.Fprintf(os.Stderr, "Please check your configuration file and fix the errors above.\n")
+		return 1
+	}
+
+	// Configuration is valid - print summary
+	logger.Info().Msg("Configuration validation successful")
+	fmt.Println("\n✅ Configuration validation PASSED")
+	fmt.Println("\nConfiguration summary:")
+	fmt.Printf("  InfluxDB URL: %s\n", cfg.InfluxDB.URL)
+	fmt.Printf("  InfluxDB Organization: %s\n", cfg.InfluxDB.Organization)
+	fmt.Printf("  InfluxDB Bucket: %s\n", cfg.InfluxDB.Bucket)
+	fmt.Printf("  Log Level: %s\n", cfg.Logging.Level)
+	fmt.Printf("  Discovery Interval: %s\n", cfg.Matter.DiscoveryInterval)
+	fmt.Printf("  Poll Interval: %s\n", cfg.Matter.PollInterval)
+	fmt.Printf("  Service Type: %s\n", cfg.Matter.ServiceType)
+	fmt.Printf("  Domain: %s\n", cfg.Matter.Domain)
+	fmt.Printf("  Readings Channel Size: %d\n", cfg.Matter.ReadingsChannelSize)
+	fmt.Printf("  Cache Directory: %s\n", cfg.Cache.Directory)
+	fmt.Printf("  Cache Max Size: %d MB\n", cfg.Cache.MaxSize/(1024*1024))
+	fmt.Printf("  Cache Max Age: %s\n", cfg.Cache.MaxAge)
+
+	if cfg.Notifications.SlackWebhookURL != "" {
+		fmt.Println("  Slack Notifications: Enabled")
+	} else {
+		fmt.Println("  Slack Notifications: Disabled")
+	}
+
+	fmt.Println("\nAll validation checks passed. Configuration is ready for use.")
 	return 0
 }
 
