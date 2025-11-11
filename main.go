@@ -69,8 +69,9 @@ func main() {
 		})
 
 		logger.Info().Str("port", *metricsPort).Msg("Starting metrics and health check server")
-		if err := http.ListenAndServe(":"+*metricsPort, nil); err != nil {
-			logger.Error().Err(err).Msg("Metrics server failed")
+		serverErr := http.ListenAndServe(":"+*metricsPort, nil)
+		if serverErr != nil {
+			logger.Error().Err(serverErr).Msg("Metrics server failed")
 		}
 	}()
 
@@ -107,8 +108,9 @@ func main() {
 					logger.Info().Msg("Readings channel closed, data writer exiting")
 					return
 				}
-				if err := db.WriteReading(reading); err != nil {
-					logger.Error().Err(err).Str("device_id", reading.DeviceID).
+				writeErr := db.WriteReading(reading)
+				if writeErr != nil {
+					logger.Error().Err(writeErr).Str("device_id", reading.DeviceID).
 						Msg("Failed to write reading to InfluxDB")
 					metrics.InfluxDBWriteErrors.Inc()
 				} else {
@@ -122,6 +124,28 @@ func main() {
 	}()
 
 	// Initial device discovery
+	performInitialDiscovery(ctx, scanner, monitor)
+
+	// Periodic device discovery
+	discoveryTicker := time.NewTicker(cfg.Matter.DiscoveryInterval)
+	defer discoveryTicker.Stop()
+
+	// Main loop
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Info().Msg("Shutting down")
+			db.Flush()
+			return
+
+		case <-discoveryTicker.C:
+			performPeriodicDiscovery(ctx, scanner, monitor)
+		}
+	}
+}
+
+// performInitialDiscovery performs the initial device discovery and starts monitoring
+func performInitialDiscovery(ctx context.Context, scanner *discovery.Scanner, monitor *monitoring.PowerMonitor) {
 	logger.Info().Msg("Performing initial device discovery")
 	start := time.Now()
 	devices, err := scanner.Discover(ctx, 10*time.Second)
@@ -145,51 +169,39 @@ func main() {
 	} else {
 		logger.Warn().Msg("No power monitoring devices found. Will retry during periodic discovery")
 	}
+}
 
-	// Periodic device discovery
-	discoveryTicker := time.NewTicker(cfg.Matter.DiscoveryInterval)
-	defer discoveryTicker.Stop()
+// performPeriodicDiscovery performs periodic device discovery and starts monitoring new devices
+func performPeriodicDiscovery(ctx context.Context, scanner *discovery.Scanner, monitor *monitoring.PowerMonitor) {
+	logger.Info().Msg("Performing periodic device discovery")
+	start := time.Now()
+	newDevices, err := scanner.Discover(ctx, 10*time.Second)
+	metrics.DiscoveryDuration.Observe(time.Since(start).Seconds())
 
-	// Main loop
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Info().Msg("Shutting down")
-			db.Flush()
-			return
+	if err != nil {
+		logger.Error().Err(err).Msg("Discovery failed")
+		return
+	}
 
-		case <-discoveryTicker.C:
-			logger.Info().Msg("Performing periodic device discovery")
-			start := time.Now()
-			newDevices, err := scanner.Discover(ctx, 10*time.Second)
-			metrics.DiscoveryDuration.Observe(time.Since(start).Seconds())
+	allDevices := scanner.GetDevices()
+	logger.Info().Int("total_devices", len(allDevices)).Int("new_devices", len(newDevices)).
+		Msg("Discovery complete")
+	metrics.DevicesDiscovered.Set(float64(len(allDevices)))
 
-			if err != nil {
-				logger.Error().Err(err).Msg("Discovery failed")
-				continue
-			}
+	// Check for new power devices and start monitoring only new ones
+	powerDevices := scanner.GetPowerDevices()
+	metrics.PowerDevicesDiscovered.Set(float64(len(powerDevices)))
 
-			allDevices := scanner.GetDevices()
-			logger.Info().Int("total_devices", len(allDevices)).Int("new_devices", len(newDevices)).
-				Msg("Discovery complete")
-			metrics.DevicesDiscovered.Set(float64(len(allDevices)))
-
-			// Check for new power devices and start monitoring only new ones
-			powerDevices := scanner.GetPowerDevices()
-			metrics.PowerDevicesDiscovered.Set(float64(len(powerDevices)))
-
-			if len(newDevices) > 0 {
-				for _, device := range newDevices {
-					if device.HasPowerMeasurement() && !monitor.IsMonitoring(device.GetDeviceID()) {
-						logger.Info().Str("device_id", device.GetDeviceID()).
-							Str("device_name", device.Name).
-							Msg("Starting monitoring for new power device")
-						monitor.StartMonitoringDevice(ctx, device)
-					}
-				}
-				metrics.DevicesMonitored.Set(float64(monitor.GetMonitoredDeviceCount()))
+	if len(newDevices) > 0 {
+		for _, device := range newDevices {
+			if device.HasPowerMeasurement() && !monitor.IsMonitoring(device.GetDeviceID()) {
+				logger.Info().Str("device_id", device.GetDeviceID()).
+					Str("device_name", device.Name).
+					Msg("Starting monitoring for new power device")
+				monitor.StartMonitoringDevice(ctx, device)
 			}
 		}
+		metrics.DevicesMonitored.Set(float64(monitor.GetMonitoredDeviceCount()))
 	}
 }
 
