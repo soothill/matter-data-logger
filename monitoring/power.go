@@ -16,7 +16,6 @@ import (
 )
 
 const (
-	readingsChannelSize  = 100
 	simulatedBaseLoadMin = 10.0  // Minimum base load in watts
 	simulatedLoadRange   = 90.0  // Load range (10-100W)
 	simulatedVariation   = 10.0  // Power variation range (±5W)
@@ -52,10 +51,10 @@ type PowerMonitor struct {
 }
 
 // NewPowerMonitor creates a new power monitor
-func NewPowerMonitor(pollInterval time.Duration, scanner DeviceScanner) *PowerMonitor {
+func NewPowerMonitor(pollInterval time.Duration, scanner DeviceScanner, channelSize int) *PowerMonitor {
 	return &PowerMonitor{
 		pollInterval:     pollInterval,
-		readings:         make(chan *PowerReading, readingsChannelSize),
+		readings:         make(chan *PowerReading, channelSize),
 		monitoredDevices: make(map[string]context.CancelFunc),
 		scanner:          scanner,
 	}

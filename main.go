@@ -148,7 +148,7 @@ func main() {
 	scanner := discovery.NewScanner(cfg.Matter.ServiceType, cfg.Matter.Domain)
 
 	// Create power monitor with scanner reference for fresh device info
-	monitor := monitoring.NewPowerMonitor(cfg.Matter.PollInterval, scanner)
+	monitor := monitoring.NewPowerMonitor(cfg.Matter.PollInterval, scanner, cfg.Matter.ReadingsChannelSize)
 
 	// Context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())

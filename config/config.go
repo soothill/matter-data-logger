@@ -33,10 +33,11 @@ type InfluxDBConfig struct {
 
 // MatterConfig holds Matter device discovery settings
 type MatterConfig struct {
-	DiscoveryInterval time.Duration `yaml:"discovery_interval"`
-	PollInterval      time.Duration `yaml:"poll_interval"`
-	ServiceType       string        `yaml:"service_type"`
-	Domain            string        `yaml:"domain"`
+	DiscoveryInterval    time.Duration `yaml:"discovery_interval"`
+	PollInterval         time.Duration `yaml:"poll_interval"`
+	ServiceType          string        `yaml:"service_type"`
+	Domain               string        `yaml:"domain"`
+	ReadingsChannelSize  int           `yaml:"readings_channel_size"`
 }
 
 // LoggingConfig holds logging settings
@@ -149,6 +150,9 @@ func (c *Config) setDefaults() {
 	if c.Cache.MaxAge == 0 {
 		c.Cache.MaxAge = 24 * time.Hour
 	}
+	if c.Matter.ReadingsChannelSize == 0 {
+		c.Matter.ReadingsChannelSize = 100
+	}
 }
 
 // Validate checks if the configuration is valid
@@ -241,6 +245,16 @@ func (c *Config) validateMatter() error {
 	}
 	if c.Matter.DiscoveryInterval < c.Matter.PollInterval {
 		return fmt.Errorf("matter.discovery_interval should be greater than or equal to matter.poll_interval")
+	}
+	// Only validate channel size if explicitly set (non-zero)
+	// Zero value is allowed and will be set to default (100)
+	if c.Matter.ReadingsChannelSize != 0 {
+		if c.Matter.ReadingsChannelSize < 1 {
+			return fmt.Errorf("matter.readings_channel_size must be at least 1")
+		}
+		if c.Matter.ReadingsChannelSize > 10000 {
+			return fmt.Errorf("matter.readings_channel_size must not exceed 10000 (got %d)", c.Matter.ReadingsChannelSize)
+		}
 	}
 
 	return nil
