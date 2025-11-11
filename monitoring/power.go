@@ -32,6 +32,8 @@ type PowerMonitor struct {
 	readings         chan *PowerReading
 	monitoredDevices map[string]context.CancelFunc
 	deviceMutex      sync.RWMutex
+	wg               sync.WaitGroup
+	stopped          bool
 }
 
 // NewPowerMonitor creates a new power monitor
@@ -73,6 +75,7 @@ func (pm *PowerMonitor) StartMonitoringDevice(ctx context.Context, device *disco
 	logger.Info().Str("device_id", deviceID).Str("device_name", device.Name).
 		Msg("Starting monitoring for new device")
 
+	pm.wg.Add(1)
 	go pm.monitorDevice(deviceCtx, device)
 	return true
 }
@@ -106,6 +109,8 @@ func (pm *PowerMonitor) GetMonitoredDeviceCount() int {
 
 // monitorDevice continuously polls a single device for power data
 func (pm *PowerMonitor) monitorDevice(ctx context.Context, device *discovery.Device) {
+	defer pm.wg.Done()
+
 	ticker := time.NewTicker(pm.pollInterval)
 	defer ticker.Stop()
 
@@ -202,6 +207,30 @@ func (pm *PowerMonitor) readPower(device *discovery.Device) (*PowerReading, erro
 // Readings returns the channel for receiving power readings
 func (pm *PowerMonitor) Readings() <-chan *PowerReading {
 	return pm.readings
+}
+
+// Stop stops all device monitoring and closes the readings channel
+func (pm *PowerMonitor) Stop() {
+	pm.deviceMutex.Lock()
+	if pm.stopped {
+		pm.deviceMutex.Unlock()
+		return
+	}
+	pm.stopped = true
+
+	// Cancel all device monitoring goroutines
+	for deviceID, cancel := range pm.monitoredDevices {
+		logger.Info().Str("device_id", deviceID).Msg("Stopping device monitoring")
+		cancel()
+	}
+	pm.deviceMutex.Unlock()
+
+	// Wait for all monitoring goroutines to finish
+	pm.wg.Wait()
+
+	// Close the readings channel
+	close(pm.readings)
+	logger.Info().Msg("Power monitor stopped, readings channel closed")
 }
 
 // TODO: Implement actual Matter protocol communication

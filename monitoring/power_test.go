@@ -15,10 +15,6 @@ func TestNewPowerMonitor(t *testing.T) {
 	pollInterval := 30 * time.Second
 	monitor := NewPowerMonitor(pollInterval)
 
-	if monitor == nil {
-		t.Fatal("NewPowerMonitor() returned nil")
-	}
-
 	if monitor.pollInterval != pollInterval {
 		t.Errorf("pollInterval = %v, want %v", monitor.pollInterval, pollInterval)
 	}
@@ -115,6 +111,7 @@ func TestReadPower(t *testing.T) {
 
 	if reading == nil {
 		t.Fatal("readPower() returned nil reading")
+		return
 	}
 
 	if reading.DeviceID != device.GetDeviceID() {
@@ -353,6 +350,7 @@ func TestReadPower_ConsistentData(t *testing.T) {
 
 		if reading == nil {
 			t.Fatalf("readPower() iteration %d returned nil", i)
+			return
 		}
 
 		// Verify timestamp is recent

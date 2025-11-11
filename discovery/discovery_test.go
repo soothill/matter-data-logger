@@ -17,10 +17,6 @@ func TestNewScanner(t *testing.T) {
 
 	scanner := NewScanner(serviceType, domain)
 
-	if scanner == nil {
-		t.Fatal("NewScanner() returned nil")
-	}
-
 	if scanner.serviceType != serviceType {
 		t.Errorf("serviceType = %v, want %v", scanner.serviceType, serviceType)
 	}

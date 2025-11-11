@@ -76,7 +76,7 @@ func (s *Scanner) Discover(ctx context.Context, timeout time.Duration) ([]*Devic
 
 	// Buffered channel to prevent blocking zeroconf resolver
 	entries := make(chan *zeroconf.ServiceEntry, 10)
-	var discoveredDevices []*Device
+	discoveredDevices := make([]*Device, 0)
 	var mu sync.Mutex // Protects discoveredDevices slice
 	var wg sync.WaitGroup
 

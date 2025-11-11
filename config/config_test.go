@@ -138,8 +138,8 @@ func TestLoad_InvalidYAML(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 
 	content := []byte("invalid: yaml: content:\n  - missing\n  closing")
-	if _, err := tmpfile.Write(content); err != nil {
-		t.Fatal(err)
+	if _, writeErr := tmpfile.Write(content); writeErr != nil {
+		t.Fatal(writeErr)
 	}
 	_ = tmpfile.Close()
 
@@ -168,8 +168,8 @@ matter:
 logging:
   level: "info"
 `)
-	if _, err := tmpfile.Write(content); err != nil {
-		t.Fatal(err)
+	if _, writeErr := tmpfile.Write(content); writeErr != nil {
+		t.Fatal(writeErr)
 	}
 	_ = tmpfile.Close()
 
@@ -211,8 +211,8 @@ matter:
 logging:
   level: "info"
 `)
-	if _, err := tmpfile.Write(content); err != nil {
-		t.Fatal(err)
+	if _, writeErr := tmpfile.Write(content); writeErr != nil {
+		t.Fatal(writeErr)
 	}
 	_ = tmpfile.Close()
 
@@ -278,8 +278,8 @@ func TestLoad_Defaults(t *testing.T) {
   organization: "test-org"
   bucket: "test-bucket"
 `)
-	if _, err := tmpfile.Write(content); err != nil {
-		t.Fatal(err)
+	if _, writeErr := tmpfile.Write(content); writeErr != nil {
+		t.Fatal(writeErr)
 	}
 	_ = tmpfile.Close()
 

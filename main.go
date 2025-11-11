@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -61,17 +62,31 @@ func main() {
 	}
 	defer db.Close()
 
-	// Start metrics HTTP server
-	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		http.HandleFunc("/health", healthCheckHandler)
-		http.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
-			readinessCheckHandler(w, r, db)
-		})
+	// Setup HTTP handlers
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	mux.HandleFunc("/health", healthCheckHandler)
+	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+		readinessCheckHandler(w, r, db)
+	})
 
-		logger.Info().Str("port", *metricsPort).Msg("Starting metrics and health check server")
-		serverErr := http.ListenAndServe(":"+*metricsPort, nil)
-		if serverErr != nil {
+	// Create HTTP server with localhost binding for security
+	// Bind to localhost to prevent exposing metrics to external networks
+	// If you need external access, configure a reverse proxy with authentication
+	server := &http.Server{
+		Addr:    "localhost:" + *metricsPort,
+		Handler: mux,
+	}
+
+	// WaitGroup to track goroutines
+	var wg sync.WaitGroup
+
+	// Start metrics HTTP server
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		logger.Info().Str("addr", server.Addr).Msg("Starting metrics and health check server (localhost only)")
+		if serverErr := server.ListenAndServe(); serverErr != nil && serverErr != http.ErrServerClosed {
 			logger.Error().Err(serverErr).Msg("Metrics server failed")
 		}
 	}()
@@ -93,12 +108,13 @@ func main() {
 	go func() {
 		sig := <-sigChan
 		logger.Info().Str("signal", sig.String()).Msg("Received shutdown signal")
-		logger.Info().Msg("Initiating graceful shutdown...")
-		cancel()
+		performGracefulShutdown(server, monitor, cancel)
 	}()
 
 	// Start data writer goroutine
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			select {
 			case <-ctx.Done():
@@ -136,7 +152,7 @@ func main() {
 		select {
 		case <-ctx.Done():
 			logger.Info().Msg("Shutting down")
-			db.Flush()
+			performCleanup(db, &wg)
 			return
 
 		case <-discoveryTicker.C:
@@ -240,4 +256,51 @@ func performHealthCheck() int {
 	// Simple health check for Docker/K8s - just check if we can start
 	// In a more sophisticated implementation, this could check connectivity
 	return 0
+}
+
+// performGracefulShutdown handles graceful shutdown of all components
+func performGracefulShutdown(server *http.Server, monitor *monitoring.PowerMonitor, cancel context.CancelFunc) {
+	logger.Info().Msg("Initiating graceful shutdown...")
+
+	// Shutdown HTTP server gracefully
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		logger.Error().Err(err).Msg("HTTP server shutdown error")
+	} else {
+		logger.Info().Msg("HTTP server stopped")
+	}
+
+	// Stop power monitoring
+	monitor.Stop()
+
+	// Cancel main context
+	cancel()
+}
+
+// performCleanup flushes database and waits for goroutines to finish
+func performCleanup(db *storage.InfluxDBStorage, wg *sync.WaitGroup) {
+	// Flush InfluxDB with timeout
+	flushCtx, flushCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer flushCancel()
+
+	// Note: Current InfluxDB client Flush() doesn't accept context
+	// This is a known limitation - wrapping in goroutine with timeout
+	flushDone := make(chan struct{})
+	go func() {
+		db.Flush()
+		close(flushDone)
+	}()
+
+	select {
+	case <-flushDone:
+		logger.Info().Msg("InfluxDB flush completed")
+	case <-flushCtx.Done():
+		logger.Warn().Msg("InfluxDB flush timeout - some data may be lost")
+	}
+
+	// Wait for all goroutines to finish
+	logger.Info().Msg("Waiting for goroutines to finish...")
+	wg.Wait()
+	logger.Info().Msg("All goroutines finished, exiting")
 }
