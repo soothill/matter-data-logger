@@ -2,6 +2,83 @@
 // Licensed under the MIT License
 
 // Package notifications provides alerting capabilities via various channels.
+//
+// This package implements notification delivery for critical system events such as
+// InfluxDB connectivity issues, cache warnings, and device discovery failures.
+// Notifications help operators respond to issues before they impact data collection.
+//
+// # Notification Channels
+//
+// Currently supported:
+//   - Slack: Webhook-based notifications with formatted attachments
+//
+// Future channels could include:
+//   - Email (SMTP)
+//   - PagerDuty
+//   - Prometheus Alertmanager
+//   - Generic webhooks
+//
+// # Slack Integration
+//
+// Slack notifications use Incoming Webhooks for message delivery. The webhook URL
+// is configured via SLACK_WEBHOOK_URL environment variable or YAML config.
+//
+// Message Features:
+//   - Color-coded severity levels (red/yellow/green)
+//   - Formatted attachments with titles and timestamps
+//   - Context-aware timeout handling (10 second HTTP timeout)
+//   - Graceful degradation when webhook is not configured
+//
+// # Alert Severity Levels
+//
+// Three severity levels with corresponding colors:
+//   - danger/error: Red - Critical failures requiring immediate attention
+//   - warning/warn: Yellow - Issues that may impact functionality
+//   - good/success: Green - Recovery notifications
+//
+// # Automatic Notifications
+//
+// The system sends automatic notifications for:
+//   - InfluxDB connection failure (on first failure only)
+//   - InfluxDB connection recovery (after successful reconnection)
+//   - Cache usage warnings (when cache reaches 80% capacity)
+//   - Device discovery failures (when mDNS discovery fails)
+//
+// # Error Handling
+//
+// Notification failures are logged but do not block the main application:
+//   - Failed notifications are logged as errors
+//   - HTTP timeouts are enforced (10 seconds)
+//   - Context cancellation is respected
+//   - Disabled notifiers (empty webhook URL) skip sending silently
+//
+// # Thread Safety
+//
+// The SlackNotifier is thread-safe and can be shared across multiple goroutines.
+// Each notification uses its own HTTP request with context for cancellation.
+//
+// # Example Usage
+//
+// Basic Slack notification:
+//
+//	notifier := notifications.NewSlackNotifier("https://hooks.slack.com/...")
+//
+//	if notifier.IsEnabled() {
+//	    ctx := context.Background()
+//	    notifier.SendMessage(ctx, "Matter data logger started")
+//	}
+//
+// Formatted alert with severity:
+//
+//	notifier.SendAlert(ctx, "warning", "High CPU Usage",
+//	    "CPU usage is above 80% for the last 5 minutes")
+//
+// Automatic failure notification:
+//
+//	if err := storage.WriteReading(ctx, reading); err != nil {
+//	    notifier.SendInfluxDBFailure(ctx, err)
+//	    // Fall back to cache
+//	}
 package notifications
 
 import (

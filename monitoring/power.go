@@ -2,6 +2,67 @@
 // Licensed under the MIT License
 
 // Package monitoring provides power consumption monitoring for Matter devices.
+//
+// This package implements concurrent monitoring of multiple Matter devices,
+// reading power consumption data and publishing readings to a channel for
+// storage and processing. Each device is monitored in its own goroutine with
+// independent cancellation support.
+//
+// # Architecture
+//
+// The PowerMonitor uses a goroutine-per-device model for concurrent monitoring:
+//   - Main monitor goroutine manages the readings channel
+//   - Per-device goroutines poll devices at the configured interval
+//   - Thread-safe device map tracks active monitoring sessions
+//   - Context-based cancellation for graceful shutdown
+//
+// # Matter Electrical Clusters
+//
+// Matter devices expose power measurement data through two cluster types:
+//
+// Electrical Measurement Cluster (0x0B04) - Legacy standard:
+//   - ActivePower (0x050B): Power in watts (signed 16-bit)
+//   - RMSVoltage (0x0505): Voltage in volts (unsigned 16-bit)
+//   - RMSCurrent (0x0508): Current in milliamps (unsigned 16-bit)
+//   - ApparentPower (0x050F): Apparent power in VA
+//   - PowerFactor (0x0510): Power factor (0-100%)
+//
+// Electrical Power Measurement Cluster (0x0091) - New standard:
+//   - Voltage (0x0004): Voltage in millivolts
+//   - ActiveCurrent (0x0005): Current in milliamps
+//   - ActivePower (0x0008): Power in milliwatts
+//   - Energy (0x000B): Cumulative energy in milliwatt-hours
+//
+// # Current Implementation
+//
+// This package currently generates simulated power readings for development
+// and testing purposes. In production, this should be replaced with actual
+// Matter protocol communication using CHIP/Matter SDK for:
+//   - PASE/CASE session establishment
+//   - Cluster attribute reading via Matter Interaction Model
+//   - TLV encoding/decoding for Matter messages
+//
+// # Thread Safety
+//
+// All PowerMonitor methods are thread-safe and use read-write locks to protect
+// the internal device map. Multiple goroutines can safely call monitor methods
+// concurrently. The readings channel is buffered to prevent blocking.
+//
+// # Example Usage
+//
+//	scanner := discovery.NewScanner("_matter._tcp", "local.")
+//	monitor := monitoring.NewPowerMonitor(30*time.Second, scanner, 100)
+//
+//	ctx := context.Background()
+//	devices := scanner.GetPowerDevices()
+//	monitor.Start(ctx, devices)
+//
+//	// Read power data
+//	for reading := range monitor.Readings() {
+//	    fmt.Printf("Device %s: %.2f W\n", reading.DeviceName, reading.Power)
+//	}
+//
+//	monitor.Stop()
 package monitoring
 
 import (

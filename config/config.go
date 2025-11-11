@@ -2,6 +2,48 @@
 // Licensed under the MIT License
 
 // Package config provides configuration management for the Matter data logger.
+//
+// This package handles loading, validating, and managing application configuration
+// from YAML files with environment variable overrides. It supports comprehensive
+// validation of all configuration parameters to ensure safe operation.
+//
+// # Configuration Sources
+//
+// Configuration is loaded in the following order of precedence:
+//  1. YAML configuration file (default: config.yaml)
+//  2. Environment variable overrides
+//  3. Default values for optional settings
+//
+// # Environment Variables
+//
+// The following environment variables can override YAML configuration:
+//   - INFLUXDB_URL: InfluxDB server URL
+//   - INFLUXDB_TOKEN: InfluxDB authentication token
+//   - INFLUXDB_ORG: InfluxDB organization name
+//   - INFLUXDB_BUCKET: InfluxDB bucket name
+//   - LOG_LEVEL: Logging level (debug, info, warn, error, fatal, panic)
+//   - MATTER_DISCOVERY_INTERVAL: Device discovery interval (e.g., "5m")
+//   - MATTER_POLL_INTERVAL: Power reading poll interval (e.g., "30s")
+//   - SLACK_WEBHOOK_URL: Slack webhook URL for notifications
+//   - CACHE_DIRECTORY: Local cache directory path
+//
+// # Security Features
+//
+// The configuration system includes several security validations:
+//   - HTTPS enforcement for non-local InfluxDB connections
+//   - Minimum token length validation (8 characters)
+//   - URL format validation
+//   - Sensible limits on intervals and buffer sizes
+//
+// # Example Usage
+//
+//	cfg, err := config.Load("config.yaml")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	// Configuration is validated and ready to use
+//	fmt.Printf("InfluxDB: %s\n", cfg.InfluxDB.URL)
 package config
 
 import (

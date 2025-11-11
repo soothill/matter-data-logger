@@ -1,6 +1,93 @@
 // Copyright (c) 2025 Darren Soothill
 // Licensed under the MIT License
 
+// Package storage provides persistent storage for power consumption data with local caching.
+//
+// This package implements a two-tier storage architecture:
+//   1. Primary storage: InfluxDB time-series database
+//   2. Fallback storage: Local file-based cache
+//
+// The caching layer provides resilience against InfluxDB outages by automatically
+// falling back to local storage when the database is unavailable, then replaying
+// cached data when connectivity is restored.
+//
+// # Architecture
+//
+// Storage Components:
+//   - InfluxDBStorage: Direct InfluxDB client with circuit breaker protection
+//   - LocalCache: File-based JSON storage with size and age limits
+//   - CachingStorage: Wrapper combining InfluxDB + cache with automatic failover
+//
+// The CachingStorage wrapper monitors InfluxDB health in the background and
+// automatically switches between direct writes and cached writes based on
+// availability.
+//
+// # Automatic Failover
+//
+// When InfluxDB writes fail:
+//  1. Readings are written to local cache (JSON files)
+//  2. Slack notification sent (if configured)
+//  3. Background health checker polls InfluxDB every 30 seconds
+//  4. When healthy, cached readings are replayed in order
+//  5. Recovery notification sent
+//
+// # Circuit Breaker
+//
+// The InfluxDB storage uses the circuit breaker pattern to prevent cascading
+// failures when the database is unavailable:
+//   - Trips after 5 requests with 60% failure ratio within 60s window
+//   - 30 second timeout before attempting recovery
+//   - State transitions are logged for monitoring
+//
+// # Cache Management
+//
+// The local cache has configurable limits:
+//   - Max size: Default 100 MB (configurable)
+//   - Max age: Default 24 hours (configurable)
+//   - Old entries are cleaned up automatically on startup
+//   - Warning notifications at 80% capacity
+//
+// # Thread Safety
+//
+// All storage operations are thread-safe and can be called concurrently from
+// multiple goroutines. The LocalCache uses a mutex to protect file operations,
+// and CachingStorage uses read-write locks for cache state management.
+//
+// # Flux Query Security
+//
+// All Flux queries sanitize user inputs to prevent injection attacks:
+//   - Special characters are escaped (quotes, backslashes, newlines)
+//   - Input length is limited (1000 characters max)
+//   - Null bytes are removed
+//
+// # Example Usage
+//
+// Direct InfluxDB storage:
+//
+//	storage, err := storage.NewInfluxDBStorage(url, token, org, bucket)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	defer storage.Close()
+//
+//	reading := &monitoring.PowerReading{
+//	    DeviceID:  "device-1",
+//	    Power:     100.5,
+//	    Timestamp: time.Now(),
+//	}
+//	storage.WriteReading(context.Background(), reading)
+//
+// Caching storage with automatic failover:
+//
+//	influxDB, _ := storage.NewInfluxDBStorage(url, token, org, bucket)
+//	cache, _ := storage.NewLocalCache("/var/cache/app", 100*1024*1024, 24*time.Hour)
+//	notifier := notifications.NewSlackNotifier(webhookURL)
+//
+//	cachingStorage := storage.NewCachingStorage(influxDB, cache, notifier)
+//	defer cachingStorage.Close()
+//
+//	// Writes to InfluxDB, falls back to cache on failure
+//	cachingStorage.WriteReading(context.Background(), reading)
 package storage
 
 import (

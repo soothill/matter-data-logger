@@ -1,7 +1,51 @@
 // Copyright (c) 2025 Darren Soothill
 // Licensed under the MIT License
 
-// Package discovery provides Matter device discovery via mDNS.
+// Package discovery provides Matter device discovery via mDNS (multicast DNS).
+//
+// This package implements automatic discovery of Matter devices on the local network
+// using mDNS service discovery. It identifies devices with power measurement capabilities
+// by examining their Matter cluster information.
+//
+// # Matter Protocol
+//
+// Matter devices advertise themselves using mDNS with the service type "_matter._tcp".
+// Each device includes TXT records containing:
+//   - D: Discriminator (device identifier)
+//   - VP: Vendor ID and Product ID
+//   - CM: Commissioning Mode
+//   - CL: Cluster information (indicates supported features)
+//
+// # Power Measurement Detection
+//
+// The scanner automatically identifies devices with power measurement by checking
+// for these Matter clusters in the device's TXT records:
+//   - 0x0B04: Electrical Measurement Cluster (older standard)
+//   - 0x0091: Electrical Power Measurement Cluster (newer standard)
+//
+// # Thread Safety
+//
+// All scanner operations are thread-safe and use read-write locks to protect
+// the internal device map. Multiple goroutines can safely call scanner methods
+// concurrently.
+//
+// # Example Usage
+//
+//	scanner := discovery.NewScanner("_matter._tcp", "local.")
+//
+//	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+//	defer cancel()
+//
+//	devices, err := scanner.Discover(ctx, 10*time.Second)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	// Get only devices with power measurement capability
+//	powerDevices := scanner.GetPowerDevices()
+//	for _, device := range powerDevices {
+//	    fmt.Printf("Found power device: %s\n", device.Name)
+//	}
 package discovery
 
 import (
