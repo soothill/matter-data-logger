@@ -26,6 +26,8 @@ import (
 
 // initializeComponents initializes all application components
 func initializeComponents(cfg *config.Config, metricsPort string) (*notifications.SlackNotifier, *storage.CachingStorage, *storage.InfluxDBStorage, *http.Server) {
+	var err error
+
 	// Initialize Slack notifier
 	notifier := notifications.NewSlackNotifier(cfg.Notifications.SlackWebhookURL)
 	if notifier.IsEnabled() {
@@ -35,7 +37,8 @@ func initializeComponents(cfg *config.Config, metricsPort string) (*notification
 	}
 
 	// Initialize InfluxDB storage
-	influxDB, err := storage.NewInfluxDBStorage(
+	var influxDB *storage.InfluxDBStorage
+	influxDB, err = storage.NewInfluxDBStorage(
 		cfg.InfluxDB.URL,
 		cfg.InfluxDB.Token,
 		cfg.InfluxDB.Organization,
@@ -46,7 +49,8 @@ func initializeComponents(cfg *config.Config, metricsPort string) (*notification
 	}
 
 	// Initialize local cache
-	cache, err := storage.NewLocalCache(
+	var cache *storage.LocalCache
+	cache, err = storage.NewLocalCache(
 		cfg.Cache.Directory,
 		cfg.Cache.MaxSize,
 		cfg.Cache.MaxAge,
