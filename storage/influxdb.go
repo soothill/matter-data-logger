@@ -2,6 +2,24 @@
 // Licensed under the MIT License
 
 // Package storage provides InfluxDB storage for power consumption data.
+//
+// # Connection Pooling
+//
+// The InfluxDB client automatically manages HTTP connection pooling using Go's
+// net/http package. The client creates a single HTTP connection pool that is
+// shared across all write operations, providing efficient connection reuse.
+//
+// Key connection pooling behaviors:
+//   - HTTP/1.1 persistent connections are reused automatically
+//   - Default Go http.Transport settings apply:
+//     * MaxIdleConns: 100 (total idle connections across all hosts)
+//     * MaxIdleConnsPerHost: 2 (idle connections per host)
+//     * IdleConnTimeout: 90 seconds (time before idle connections are closed)
+//   - Connections are thread-safe and can be used concurrently
+//   - No manual connection management is required
+//
+// The WriteAPI uses non-blocking asynchronous writes with automatic batching,
+// further improving throughput by reducing the number of HTTP requests.
 package storage
 
 import (
@@ -42,7 +60,26 @@ type retryItem struct {
 	attempts int
 }
 
-// NewInfluxDBStorage creates a new InfluxDB storage client
+// NewInfluxDBStorage creates a new InfluxDB storage client.
+//
+// Connection Pooling:
+// The InfluxDB client automatically manages HTTP connection pooling. A single
+// client instance maintains a pool of persistent HTTP connections that are
+// reused across multiple write operations. This significantly reduces the
+// overhead of establishing new connections for each request.
+//
+// The client is thread-safe and can be safely shared across multiple goroutines.
+// All write operations use the same underlying connection pool, maximizing
+// efficiency for concurrent writes.
+//
+// Performance characteristics:
+//   - Connection reuse reduces latency by eliminating TCP handshake overhead
+//   - Idle connections are kept alive for 90 seconds (Go default)
+//   - Up to 2 idle connections per host are maintained for immediate reuse
+//   - Automatic reconnection handling on connection failures
+//
+// No manual connection management is required. The Close() method should be
+// called when the storage is no longer needed to gracefully close all connections.
 func NewInfluxDBStorage(url, token, org, bucket string) (*InfluxDBStorage, error) {
 	client := influxdb2.NewClient(url, token)
 
