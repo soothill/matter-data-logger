@@ -20,8 +20,66 @@ import (
 	"github.com/soothill/matter-data-logger/monitoring"
 	"github.com/soothill/matter-data-logger/pkg/logger"
 	"github.com/soothill/matter-data-logger/pkg/metrics"
+	"github.com/soothill/matter-data-logger/pkg/notifications"
 	"github.com/soothill/matter-data-logger/storage"
 )
+
+// initializeComponents initializes all application components
+func initializeComponents(cfg *config.Config, metricsPort string) (*notifications.SlackNotifier, *storage.CachingStorage, *storage.InfluxDBStorage, *http.Server) {
+	// Initialize Slack notifier
+	notifier := notifications.NewSlackNotifier(cfg.Notifications.SlackWebhookURL)
+	if notifier.IsEnabled() {
+		logger.Info().Msg("Slack notifications enabled")
+	} else {
+		logger.Info().Msg("Slack notifications disabled (no webhook URL configured)")
+	}
+
+	// Initialize InfluxDB storage
+	influxDB, err := storage.NewInfluxDBStorage(
+		cfg.InfluxDB.URL,
+		cfg.InfluxDB.Token,
+		cfg.InfluxDB.Organization,
+		cfg.InfluxDB.Bucket,
+	)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to initialize InfluxDB")
+	}
+
+	// Initialize local cache
+	cache, err := storage.NewLocalCache(
+		cfg.Cache.Directory,
+		cfg.Cache.MaxSize,
+		cfg.Cache.MaxAge,
+	)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to initialize local cache")
+	}
+	logger.Info().Str("directory", cfg.Cache.Directory).
+		Int64("max_size_mb", cfg.Cache.MaxSize/(1024*1024)).
+		Dur("max_age", cfg.Cache.MaxAge).
+		Msg("Local cache initialized")
+
+	// Wrap InfluxDB storage with caching layer
+	db := storage.NewCachingStorage(influxDB, cache, notifier)
+
+	// Setup HTTP handlers
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	mux.HandleFunc("/health", healthCheckHandler)
+	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+		readinessCheckHandler(w, r, influxDB)
+	})
+
+	// Create HTTP server with localhost binding for security
+	// Bind to localhost to prevent exposing metrics to external networks
+	// If you need external access, configure a reverse proxy with authentication
+	server := &http.Server{
+		Addr:    "localhost:" + metricsPort,
+		Handler: mux,
+	}
+
+	return notifier, db, influxDB, server
+}
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "Path to configuration file")
@@ -49,34 +107,10 @@ func main() {
 		Dur("poll_interval", cfg.Matter.PollInterval).
 		Msg("Configuration loaded")
 
-	// Initialize InfluxDB storage
-	var db *storage.InfluxDBStorage
-	db, err = storage.NewInfluxDBStorage(
-		cfg.InfluxDB.URL,
-		cfg.InfluxDB.Token,
-		cfg.InfluxDB.Organization,
-		cfg.InfluxDB.Bucket,
-	)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("Failed to initialize InfluxDB")
-	}
+	// Initialize components
+	notifier, db, influxDB, server := initializeComponents(cfg, *metricsPort)
+	defer influxDB.Close()
 	defer db.Close()
-
-	// Setup HTTP handlers
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
-	mux.HandleFunc("/health", healthCheckHandler)
-	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
-		readinessCheckHandler(w, r, db)
-	})
-
-	// Create HTTP server with localhost binding for security
-	// Bind to localhost to prevent exposing metrics to external networks
-	// If you need external access, configure a reverse proxy with authentication
-	server := &http.Server{
-		Addr:    "localhost:" + *metricsPort,
-		Handler: mux,
-	}
 
 	// WaitGroup to track goroutines
 	var wg sync.WaitGroup
@@ -141,7 +175,7 @@ func main() {
 	}()
 
 	// Initial device discovery
-	performInitialDiscovery(ctx, scanner, monitor)
+	performInitialDiscovery(ctx, scanner, monitor, notifier)
 
 	// Periodic device discovery
 	discoveryTicker := time.NewTicker(cfg.Matter.DiscoveryInterval)
@@ -156,13 +190,13 @@ func main() {
 			return
 
 		case <-discoveryTicker.C:
-			performPeriodicDiscovery(ctx, scanner, monitor)
+			performPeriodicDiscovery(ctx, scanner, monitor, notifier)
 		}
 	}
 }
 
 // performInitialDiscovery performs the initial device discovery and starts monitoring
-func performInitialDiscovery(ctx context.Context, scanner *discovery.Scanner, monitor *monitoring.PowerMonitor) {
+func performInitialDiscovery(ctx context.Context, scanner *discovery.Scanner, monitor *monitoring.PowerMonitor, notifier *notifications.SlackNotifier) {
 	logger.Info().Msg("Performing initial device discovery")
 	start := time.Now()
 	devices, discoverErr := scanner.Discover(ctx, 10*time.Second)
@@ -170,6 +204,14 @@ func performInitialDiscovery(ctx context.Context, scanner *discovery.Scanner, mo
 
 	if discoverErr != nil {
 		logger.Error().Err(discoverErr).Msg("Initial discovery failed")
+		// Send Slack alert for discovery failure
+		if notifier != nil && notifier.IsEnabled() {
+			alertCtx, alertCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer alertCancel()
+			if notifyErr := notifier.SendDiscoveryFailure(alertCtx, discoverErr); notifyErr != nil {
+				logger.Error().Err(notifyErr).Msg("Failed to send discovery failure alert")
+			}
+		}
 	} else {
 		logger.Info().Int("count", len(devices)).Msg("Discovered Matter devices")
 		metrics.DevicesDiscovered.Set(float64(len(scanner.GetDevices())))
@@ -189,7 +231,7 @@ func performInitialDiscovery(ctx context.Context, scanner *discovery.Scanner, mo
 }
 
 // performPeriodicDiscovery performs periodic device discovery and starts monitoring new devices
-func performPeriodicDiscovery(ctx context.Context, scanner *discovery.Scanner, monitor *monitoring.PowerMonitor) {
+func performPeriodicDiscovery(ctx context.Context, scanner *discovery.Scanner, monitor *monitoring.PowerMonitor, notifier *notifications.SlackNotifier) {
 	logger.Info().Msg("Performing periodic device discovery")
 	start := time.Now()
 	newDevices, discoverErr := scanner.Discover(ctx, 10*time.Second)
@@ -197,6 +239,14 @@ func performPeriodicDiscovery(ctx context.Context, scanner *discovery.Scanner, m
 
 	if discoverErr != nil {
 		logger.Error().Err(discoverErr).Msg("Discovery failed")
+		// Send Slack alert for discovery failure (only log, don't block periodic discovery)
+		if notifier != nil && notifier.IsEnabled() {
+			alertCtx, alertCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer alertCancel()
+			if notifyErr := notifier.SendDiscoveryFailure(alertCtx, discoverErr); notifyErr != nil {
+				logger.Error().Err(notifyErr).Msg("Failed to send discovery failure alert")
+			}
+		}
 		return
 	}
 
@@ -279,7 +329,7 @@ func performGracefulShutdown(server *http.Server, monitor *monitoring.PowerMonit
 }
 
 // performCleanup flushes database and waits for goroutines to finish
-func performCleanup(db *storage.InfluxDBStorage, wg *sync.WaitGroup) {
+func performCleanup(db *storage.CachingStorage, wg *sync.WaitGroup) {
 	// Flush InfluxDB with timeout
 	flushCtx, flushCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer flushCancel()

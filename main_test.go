@@ -124,8 +124,8 @@ func TestPerformGracefulShutdown(t *testing.T) {
 }
 
 func TestPerformCleanup(t *testing.T) {
-	// Create a mock storage
-	db, err := storage.NewInfluxDBStorage(
+	// Create a mock InfluxDB storage
+	influxDB, err := storage.NewInfluxDBStorage(
 		"http://localhost:8086",
 		"test-token",
 		"test-org",
@@ -134,6 +134,17 @@ func TestPerformCleanup(t *testing.T) {
 	if err != nil {
 		t.Skip("Cannot create InfluxDB client for testing")
 	}
+	defer influxDB.Close()
+
+	// Create a temporary cache directory
+	tempDir := t.TempDir()
+	cache, err := storage.NewLocalCache(tempDir, 1024*1024, time.Hour)
+	if err != nil {
+		t.Fatalf("Failed to create cache: %v", err)
+	}
+
+	// Create caching storage (pass nil notifier for test)
+	db := storage.NewCachingStorage(influxDB, cache, nil)
 	defer db.Close()
 
 	// Create a WaitGroup and add a goroutine

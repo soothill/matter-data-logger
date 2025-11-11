@@ -91,8 +91,8 @@ func TestLocalCache_ListCachedReadings(t *testing.T) {
 			Energy:     1.0,
 		}
 
-		if err := cache.Write(reading); err != nil {
-			t.Fatalf("Write() error = %v", err)
+		if writeErr := cache.Write(reading); writeErr != nil {
+			t.Fatalf("Write() error = %v", writeErr)
 		}
 
 		time.Sleep(10 * time.Millisecond) // Ensure different timestamps
@@ -132,8 +132,8 @@ func TestLocalCache_DeleteCached(t *testing.T) {
 		Energy:     1.0,
 	}
 
-	if err := cache.Write(reading); err != nil {
-		t.Fatalf("Write() error = %v", err)
+	if writeErr := cache.Write(reading); writeErr != nil {
+		t.Fatalf("Write() error = %v", writeErr)
 	}
 
 	readings, err := cache.ListCachedReadings()
@@ -180,8 +180,8 @@ func TestLocalCache_CleanupOld(t *testing.T) {
 		Energy:     1.0,
 	}
 
-	if err := cache.Write(reading); err != nil {
-		t.Fatalf("Write() error = %v", err)
+	if writeErr := cache.Write(reading); writeErr != nil {
+		t.Fatalf("Write() error = %v", writeErr)
 	}
 
 	// Wait for reading to become old
@@ -254,8 +254,8 @@ func TestLocalCache_CacheFull(t *testing.T) {
 	}
 
 	// First write should succeed
-	if err := cache.Write(reading); err != nil {
-		t.Fatalf("First Write() error = %v", err)
+	if writeErr := cache.Write(reading); writeErr != nil {
+		t.Fatalf("First Write() error = %v", writeErr)
 	}
 
 	// Second write should fail (cache full)
