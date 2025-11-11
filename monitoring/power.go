@@ -140,6 +140,10 @@ func (pm *PowerMonitor) monitorDevice(ctx context.Context, device *discovery.Dev
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			// Check context before expensive operation
+			if ctx.Err() != nil {
+				return
+			}
 			start := time.Now()
 			reading, err := pm.readPower(device)
 			metrics.PowerReadingDuration.Observe(time.Since(start).Seconds())

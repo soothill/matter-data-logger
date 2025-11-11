@@ -383,6 +383,10 @@ func (cs *CachingStorage) monitorAndReplay() {
 		case <-cs.ctx.Done():
 			return
 		case <-ticker.C:
+			// Check context before health check operation
+			if cs.ctx.Err() != nil {
+				return
+			}
 			cs.cacheMutex.RLock()
 			cacheEnabled := cs.cacheEnabled
 			cs.cacheMutex.RUnlock()

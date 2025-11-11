@@ -209,6 +209,10 @@ func main() {
 			return
 
 		case <-discoveryTicker.C:
+			// Check context before discovery operation
+			if ctx.Err() != nil {
+				return
+			}
 			performPeriodicDiscovery(ctx, scanner, monitor, notifier)
 		}
 	}
