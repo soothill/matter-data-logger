@@ -124,30 +124,36 @@ func (c *Config) setDefaults() {
 
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
-	// Validate InfluxDB configuration
+	if validateErr := c.validateInfluxDB(); validateErr != nil {
+		return validateErr
+	}
+
+	if validateErr := c.validateMatter(); validateErr != nil {
+		return validateErr
+	}
+
+	if validateErr := c.validateLogging(); validateErr != nil {
+		return validateErr
+	}
+
+	return nil
+}
+
+// validateInfluxDB validates the InfluxDB configuration
+func (c *Config) validateInfluxDB() error {
 	if c.InfluxDB.URL == "" {
 		return fmt.Errorf("influxdb.url is required")
 	}
 
 	// Validate URL format and security
-	parsedURL, err := url.Parse(c.InfluxDB.URL)
-	if err != nil {
-		return fmt.Errorf("influxdb.url is not a valid URL: %w", err)
+	parsedURL, parseErr := url.Parse(c.InfluxDB.URL)
+	if parseErr != nil {
+		return fmt.Errorf("influxdb.url is not a valid URL: %w", parseErr)
 	}
 
 	// Check for HTTPS in production-like URLs (not localhost/127.0.0.1)
-	if parsedURL.Scheme == "http" {
-		hostname := strings.ToLower(parsedURL.Hostname())
-		isLocal := hostname == "localhost" ||
-			hostname == "127.0.0.1" ||
-			hostname == "::1" ||
-			strings.HasPrefix(hostname, "192.168.") ||
-			strings.HasPrefix(hostname, "10.") ||
-			strings.HasPrefix(hostname, "172.")
-
-		if !isLocal {
-			return fmt.Errorf("influxdb.url must use HTTPS for non-local connections (got %s). Using HTTP transmits credentials in plaintext and is a security risk", parsedURL.Scheme)
-		}
+	if securityErr := validateURLSecurity(parsedURL); securityErr != nil {
+		return securityErr
 	}
 
 	if c.InfluxDB.Token == "" {
@@ -166,7 +172,32 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("influxdb.bucket is required")
 	}
 
-	// Validate Matter configuration
+	return nil
+}
+
+// validateURLSecurity checks if the URL uses HTTPS for non-local connections
+func validateURLSecurity(parsedURL *url.URL) error {
+	if parsedURL.Scheme != "http" {
+		return nil
+	}
+
+	hostname := strings.ToLower(parsedURL.Hostname())
+	isLocal := hostname == "localhost" ||
+		hostname == "127.0.0.1" ||
+		hostname == "::1" ||
+		strings.HasPrefix(hostname, "192.168.") ||
+		strings.HasPrefix(hostname, "10.") ||
+		strings.HasPrefix(hostname, "172.")
+
+	if !isLocal {
+		return fmt.Errorf("influxdb.url must use HTTPS for non-local connections (got %s). Using HTTP transmits credentials in plaintext and is a security risk", parsedURL.Scheme)
+	}
+
+	return nil
+}
+
+// validateMatter validates the Matter configuration
+func (c *Config) validateMatter() error {
 	if c.Matter.DiscoveryInterval < time.Second {
 		return fmt.Errorf("matter.discovery_interval must be at least 1 second")
 	}
@@ -183,7 +214,11 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("matter.discovery_interval should be greater than or equal to matter.poll_interval")
 	}
 
-	// Validate logging configuration
+	return nil
+}
+
+// validateLogging validates the logging configuration
+func (c *Config) validateLogging() error {
 	validLevels := map[string]bool{
 		"debug": true, "info": true, "warn": true,
 		"warning": true, "error": true, "fatal": true, "panic": true,
