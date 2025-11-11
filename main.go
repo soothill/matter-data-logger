@@ -163,7 +163,7 @@ func main() {
 					logger.Info().Msg("Readings channel closed, data writer exiting")
 					return
 				}
-				writeErr := db.WriteReading(reading)
+				writeErr := db.WriteReading(ctx, reading)
 				if writeErr != nil {
 					logger.Error().Err(writeErr).Str("device_id", reading.DeviceID).
 						Msg("Failed to write reading to InfluxDB")

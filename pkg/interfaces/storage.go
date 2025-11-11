@@ -27,10 +27,12 @@ type PowerReading struct {
 // Implementations should handle power readings and provide health checks.
 type TimeSeriesStorage interface {
 	// WriteReading writes a single power reading to storage
-	WriteReading(reading *PowerReading) error
+	// The context can be used for cancellation and timeout control
+	WriteReading(ctx context.Context, reading *PowerReading) error
 
 	// WriteBatch writes multiple readings to storage efficiently
-	WriteBatch(readings []*PowerReading) error
+	// The context can be used for cancellation and timeout control
+	WriteBatch(ctx context.Context, readings []*PowerReading) error
 
 	// Flush ensures all pending writes are completed
 	Flush()

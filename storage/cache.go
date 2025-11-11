@@ -292,9 +292,10 @@ func NewCachingStorage(storage *InfluxDBStorage, cache *LocalCache, notifier Not
 }
 
 // WriteReading writes a reading, falling back to cache if InfluxDB is unavailable
-func (cs *CachingStorage) WriteReading(reading *monitoring.PowerReading) error {
+// The context can be used for cancellation and timeout control
+func (cs *CachingStorage) WriteReading(ctx context.Context, reading *monitoring.PowerReading) error {
 	// Try to write to InfluxDB first
-	err := cs.storage.WriteReading(reading)
+	err := cs.storage.WriteReading(ctx, reading)
 	if err == nil {
 		return nil
 	}
@@ -337,9 +338,10 @@ func (cs *CachingStorage) WriteReading(reading *monitoring.PowerReading) error {
 }
 
 // WriteBatch writes multiple readings
-func (cs *CachingStorage) WriteBatch(readings []*monitoring.PowerReading) error {
+// The context can be used for cancellation and timeout control
+func (cs *CachingStorage) WriteBatch(ctx context.Context, readings []*monitoring.PowerReading) error {
 	for _, reading := range readings {
-		if err := cs.WriteReading(reading); err != nil {
+		if err := cs.WriteReading(ctx, reading); err != nil {
 			return err
 		}
 	}
@@ -441,7 +443,8 @@ func (cs *CachingStorage) replayCachedData() error {
 	failCount := 0
 
 	for _, cached := range readings {
-		if err := cs.storage.WriteReading(cached.Reading); err != nil {
+		// Use internal context for replay operations
+		if err := cs.storage.WriteReading(cs.ctx, cached.Reading); err != nil {
 			logger.Warn().
 				Err(err).
 				Str("device_id", cached.Reading.DeviceID).

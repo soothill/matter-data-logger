@@ -89,7 +89,13 @@ func NewInfluxDBStorage(url, token, org, bucket string) (*InfluxDBStorage, error
 }
 
 // WriteReading writes a power reading to InfluxDB
-func (s *InfluxDBStorage) WriteReading(reading *monitoring.PowerReading) error {
+// The context can be used for cancellation and timeout control
+func (s *InfluxDBStorage) WriteReading(ctx context.Context, reading *monitoring.PowerReading) error {
+	// Check if context is already canceled
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("context canceled: %w", err)
+	}
+
 	// Validate input
 	if reading == nil {
 		return fmt.Errorf("reading cannot be nil")
@@ -135,13 +141,14 @@ func (s *InfluxDBStorage) WriteReading(reading *monitoring.PowerReading) error {
 }
 
 // WriteBatch writes multiple readings efficiently
-func (s *InfluxDBStorage) WriteBatch(readings []*monitoring.PowerReading) error {
+// The context can be used for cancellation and timeout control
+func (s *InfluxDBStorage) WriteBatch(ctx context.Context, readings []*monitoring.PowerReading) error {
 	if readings == nil {
 		return fmt.Errorf("readings slice cannot be nil")
 	}
 
 	for i, reading := range readings {
-		if err := s.WriteReading(reading); err != nil {
+		if err := s.WriteReading(ctx, reading); err != nil {
 			return fmt.Errorf("failed to write reading at index %d: %w", i, err)
 		}
 	}
@@ -238,7 +245,8 @@ func (s *InfluxDBStorage) processRetries() {
 					Str("device_id", item.reading.DeviceID).
 					Msg("Retrying InfluxDB write")
 
-				if err := s.WriteReading(item.reading); err != nil {
+				// Use internal context for retries
+				if err := s.WriteReading(s.ctx, item.reading); err != nil {
 					logger.Error().
 						Err(err).
 						Int("attempt", item.attempts+1).

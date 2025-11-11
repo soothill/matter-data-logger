@@ -59,7 +59,7 @@ func TestIntegration_WriteReading(t *testing.T) {
 	}
 
 	// Write reading
-	if err := storage.WriteReading(reading); err != nil {
+	if err := storage.WriteReading(ctx, reading); err != nil {
 		t.Fatalf("WriteReading() error = %v", err)
 	}
 
@@ -133,7 +133,7 @@ func TestIntegration_WriteBatch(t *testing.T) {
 	}
 
 	// Write batch
-	if err := storage.WriteBatch(readings); err != nil {
+	if err := storage.WriteBatch(ctx, readings); err != nil {
 		t.Fatalf("WriteBatch() error = %v", err)
 	}
 
@@ -236,7 +236,7 @@ func TestIntegration_WriteReading_ValidationErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := storage.WriteReading(tt.reading)
+			err := storage.WriteReading(ctx, tt.reading)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("WriteReading() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -306,7 +306,7 @@ func TestIntegration_QueryLatestReading(t *testing.T) {
 	}
 
 	for _, reading := range readings {
-		if err := storage.WriteReading(reading); err != nil {
+		if err := storage.WriteReading(ctx, reading); err != nil {
 			t.Fatalf("Failed to write test reading: %v", err)
 		}
 	}
@@ -453,7 +453,7 @@ func TestIntegration_CloseAndFlush(t *testing.T) {
 		Energy:     0.5,
 	}
 
-	if err := storage.WriteReading(reading); err != nil {
+	if err := storage.WriteReading(ctx, reading); err != nil {
 		t.Fatalf("WriteReading() error = %v", err)
 	}
 
@@ -542,13 +542,13 @@ func TestIntegration_WriteBatch_EmptySlice(t *testing.T) {
 	defer storage.Close()
 
 	// Test empty slice - should not error
-	err = storage.WriteBatch([]*monitoring.PowerReading{})
+	err = storage.WriteBatch(ctx, []*monitoring.PowerReading{})
 	if err != nil {
 		t.Errorf("WriteBatch() with empty slice error = %v", err)
 	}
 
 	// Test nil slice - should error
-	err = storage.WriteBatch(nil)
+	err = storage.WriteBatch(ctx, nil)
 	if err == nil {
 		t.Error("WriteBatch() with nil slice should return error")
 	}
