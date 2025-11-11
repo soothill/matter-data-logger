@@ -7,10 +7,15 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/soothill/matter-data-logger/config"
+	"github.com/soothill/matter-data-logger/discovery"
+	"github.com/soothill/matter-data-logger/monitoring"
 	"github.com/soothill/matter-data-logger/storage"
 )
 
@@ -169,5 +174,149 @@ func TestPerformCleanup(t *testing.T) {
 		// Success - cleanup completed
 	case <-time.After(15 * time.Second):
 		t.Error("performCleanup() did not complete within expected time")
+	}
+}
+
+func TestInitializeComponents(t *testing.T) {
+	// Skip this test as initializeComponents calls Fatal() on InfluxDB connection failure
+	// which would terminate the entire test suite
+	// This function is indirectly tested by integration tests
+	t.Skip("initializeComponents() calls Fatal() on errors, cannot test without real InfluxDB")
+}
+
+func TestPerformInitialDiscovery_NoDevices(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// Create scanner
+	scanner := discovery.NewScanner("_matter._tcp", "local.")
+
+	// Create monitor
+	monitor := monitoring.NewPowerMonitor(1 * time.Second)
+	defer monitor.Stop()
+
+	// Run initial discovery (will timeout as no real devices)
+	performInitialDiscovery(ctx, scanner, monitor, nil)
+
+	// Verify no devices were discovered (expected in test environment)
+	devices := scanner.GetDevices()
+	if len(devices) > 0 {
+		t.Logf("Unexpectedly found %d devices in test environment", len(devices))
+	}
+
+	// Verify no power devices
+	powerDevices := scanner.GetPowerDevices()
+	if len(powerDevices) > 0 {
+		t.Logf("Unexpectedly found %d power devices in test environment", len(powerDevices))
+	}
+}
+
+func TestPerformPeriodicDiscovery_NoDevices(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// Create scanner
+	scanner := discovery.NewScanner("_matter._tcp", "local.")
+
+	// Create monitor
+	monitor := monitoring.NewPowerMonitor(1 * time.Second)
+	defer monitor.Stop()
+
+	// Run periodic discovery (will timeout as no real devices)
+	performPeriodicDiscovery(ctx, scanner, monitor, nil)
+
+	// Verify function completed without panic
+	// In a test environment with no devices, this tests error handling
+}
+
+func TestReadinessCheckHandler_Healthy(t *testing.T) {
+	// This test requires a mock InfluxDB or test container
+	// For now, we test the handler structure
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	w := httptest.NewRecorder()
+
+	// Create a mock storage (will likely fail health check)
+	db, err := storage.NewInfluxDBStorage(
+		"http://localhost:8086",
+		"test-token",
+		"test-org",
+		"test-bucket",
+	)
+	if err != nil {
+		t.Skip("Cannot create InfluxDB client for testing")
+	}
+	defer db.Close()
+
+	readinessCheckHandler(w, req, db)
+
+	resp := w.Result()
+	defer func() { _ = resp.Body.Close() }()
+
+	// Will likely return 503 as InfluxDB is not running
+	// But the handler should not panic
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("readinessCheckHandler() status = %d, want %d or %d",
+			resp.StatusCode, http.StatusOK, http.StatusServiceUnavailable)
+	}
+}
+
+func TestInitializeComponents_WithSlackWebhook(t *testing.T) {
+	// Skip this test as initializeComponents calls Fatal() on InfluxDB connection failure
+	t.Skip("initializeComponents() calls Fatal() on errors, cannot test without real InfluxDB")
+}
+
+func TestMain_ConfigFileHandling(t *testing.T) {
+	// Test config file creation and loading
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "test-config.yaml")
+
+	// Create a minimal test config file
+	configContent := `
+influxdb:
+  url: "http://localhost:8086"
+  token: "test-token"
+  organization: "test-org"
+  bucket: "test-bucket"
+
+matter:
+  service_type: "_matter._tcp"
+  domain: "local."
+  discovery_interval: 5m
+  poll_interval: 30s
+
+logging:
+  level: "info"
+
+notifications:
+  slack_webhook_url: ""
+
+cache:
+  directory: "` + tempDir + `"
+  max_size: 104857600
+  max_age: 24h
+`
+
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test config file: %v", err)
+	}
+
+	// Load the config
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load test config: %v", err)
+	}
+
+	// Verify config values
+	if cfg.InfluxDB.URL != "http://localhost:8086" {
+		t.Errorf("InfluxDB URL = %s, want http://localhost:8086", cfg.InfluxDB.URL)
+	}
+
+	if cfg.InfluxDB.Token != "test-token" {
+		t.Errorf("InfluxDB token = %s, want test-token", cfg.InfluxDB.Token)
+	}
+
+	if cfg.Matter.ServiceType != "_matter._tcp" {
+		t.Errorf("ServiceType = %s, want _matter._tcp", cfg.Matter.ServiceType)
 	}
 }
