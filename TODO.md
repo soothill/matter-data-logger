@@ -1,9 +1,12 @@
+[comment]: # (Copyright (c) 2025 Darren Soothill)
+[comment]: # (Licensed under the MIT License)
+
 # Code Improvements TODO
 
 This document tracks code improvement opportunities identified through comprehensive codebase analysis.
 
 ## Project Overview
-- **Type**: Go 1.22 Matter Power Data Logger
+- **Type**: Go 1.24.0 (toolchain 1.24.8) Matter Power Data Logger
 - **LOC**: ~2,507 lines
 - **Test Coverage**: 67% average (main: 0%, storage: 12.5%, discovery: 37.5%)
 - **Purpose**: Discovers Matter devices via mDNS, monitors power consumption, stores in InfluxDB
