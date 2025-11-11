@@ -126,8 +126,8 @@ func FuzzSanitizeFluxString(f *testing.F) {
 		// Property-based check: length should be reasonable
 		// Original input could be up to 1000 chars
 		// Each char could be escaped (doubled at most)
-		// So result should be <= 2 * min(len(input), 1000)
-		maxExpectedLen := 2 * min(len(input), 1000)
+		// So result should be <= 2 * minInt(len(input), 1000)
+		maxExpectedLen := 2 * minInt(len(input), 1000)
 		if len(result) > maxExpectedLen {
 			t.Errorf("sanitizeFluxString() result length %d exceeds expected max %d (input length: %d)", len(result), maxExpectedLen, len(input))
 		}
@@ -198,8 +198,8 @@ func FuzzSanitizeFluxString_LengthBoundary(f *testing.F) {
 	})
 }
 
-// min returns the minimum of two integers
-func min(a, b int) int {
+// minInt returns the minimum of two integers
+func minInt(a, b int) int {
 	if a < b {
 		return a
 	}

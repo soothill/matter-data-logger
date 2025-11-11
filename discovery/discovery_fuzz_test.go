@@ -28,7 +28,7 @@ func FuzzDevice_HasPowerMeasurement(f *testing.F) {
 	f.Add("0B04,")               // Trailing comma
 	f.Add(",0B04")               // Leading comma
 
-	f.Fuzz(func(t *testing.T, clusterString string) {
+	f.Fuzz(func(_ *testing.T, clusterString string) {
 		// Create device with fuzzed cluster string
 		device := &Device{
 			TXTRecord: map[string]string{
@@ -168,7 +168,7 @@ func FuzzDevice_ClusterStringParsing(f *testing.F) {
 	f.Add("", ",", 0)      // Empty cluster
 	f.Add("XXXX", ",", 4)  // Invalid hex
 
-	f.Fuzz(func(t *testing.T, cluster string, separator string, length int) {
+	f.Fuzz(func(_ *testing.T, cluster string, separator string, length int) {
 		// Build a cluster string with the given format
 		if length < 0 || length > 100 {
 			return // Skip unreasonable lengths
