@@ -6,7 +6,9 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -122,6 +124,28 @@ func (c *Config) Validate() error {
 	if c.InfluxDB.URL == "" {
 		return fmt.Errorf("influxdb.url is required")
 	}
+
+	// Validate URL format and security
+	parsedURL, err := url.Parse(c.InfluxDB.URL)
+	if err != nil {
+		return fmt.Errorf("influxdb.url is not a valid URL: %w", err)
+	}
+
+	// Check for HTTPS in production-like URLs (not localhost/127.0.0.1)
+	if parsedURL.Scheme == "http" {
+		hostname := strings.ToLower(parsedURL.Hostname())
+		isLocal := hostname == "localhost" ||
+			hostname == "127.0.0.1" ||
+			hostname == "::1" ||
+			strings.HasPrefix(hostname, "192.168.") ||
+			strings.HasPrefix(hostname, "10.") ||
+			strings.HasPrefix(hostname, "172.")
+
+		if !isLocal {
+			return fmt.Errorf("influxdb.url must use HTTPS for non-local connections (got %s). Using HTTP transmits credentials in plaintext and is a security risk", parsedURL.Scheme)
+		}
+	}
+
 	if c.InfluxDB.Token == "" {
 		return fmt.Errorf("influxdb.token is required")
 	}

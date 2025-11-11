@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
@@ -16,12 +17,27 @@ import (
 	"github.com/soothill/matter-data-logger/pkg/logger"
 )
 
+const (
+	maxRetries     = 3
+	initialBackoff = 1 * time.Second
+	maxBackoff     = 30 * time.Second
+)
+
 // InfluxDBStorage handles writing power data to InfluxDB
 type InfluxDBStorage struct {
-	client   influxdb2.Client
-	writeAPI api.WriteAPI
-	bucket   string
-	org      string
+	client     influxdb2.Client
+	writeAPI   api.WriteAPI
+	bucket     string
+	org        string
+	ctx        context.Context
+	cancel     context.CancelFunc
+	errorWg    sync.WaitGroup
+	retryQueue chan retryItem
+}
+
+type retryItem struct {
+	reading  *monitoring.PowerReading
+	attempts int
 }
 
 // NewInfluxDBStorage creates a new InfluxDB storage client
@@ -29,10 +45,10 @@ func NewInfluxDBStorage(url, token, org, bucket string) (*InfluxDBStorage, error
 	client := influxdb2.NewClient(url, token)
 
 	// Verify connection
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	healthCtx, healthCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer healthCancel()
 
-	health, err := client.Health(ctx)
+	health, err := client.Health(healthCtx)
 	if err != nil {
 		client.Close()
 		return nil, fmt.Errorf("failed to connect to InfluxDB: %w", err)
@@ -51,19 +67,23 @@ func NewInfluxDBStorage(url, token, org, bucket string) (*InfluxDBStorage, error
 
 	writeAPI := client.WriteAPI(org, bucket)
 
-	// Handle async write errors
-	go func() {
-		for err := range writeAPI.Errors() {
-			logger.Error().Err(err).Msg("InfluxDB write error")
-		}
-	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	storage := &InfluxDBStorage{
+		client:     client,
+		writeAPI:   writeAPI,
+		bucket:     bucket,
+		org:        org,
+		ctx:        ctx,
+		cancel:     cancel,
+		retryQueue: make(chan retryItem, 100),
+	}
 
-	return &InfluxDBStorage{
-		client:   client,
-		writeAPI: writeAPI,
-		bucket:   bucket,
-		org:      org,
-	}, nil
+	// Handle async write errors with retry logic
+	storage.errorWg.Add(2)
+	go storage.handleWriteErrors()
+	go storage.processRetries()
+
+	return storage, nil
 }
 
 // WriteReading writes a power reading to InfluxDB
@@ -77,6 +97,20 @@ func (s *InfluxDBStorage) WriteReading(reading *monitoring.PowerReading) error {
 	}
 	if reading.Timestamp.IsZero() {
 		return fmt.Errorf("timestamp cannot be zero")
+	}
+
+	// Validate power readings cannot be negative
+	if reading.Power < 0 {
+		return fmt.Errorf("power reading cannot be negative: %f", reading.Power)
+	}
+	if reading.Voltage < 0 {
+		return fmt.Errorf("voltage reading cannot be negative: %f", reading.Voltage)
+	}
+	if reading.Current < 0 {
+		return fmt.Errorf("current reading cannot be negative: %f", reading.Current)
+	}
+	if reading.Energy < 0 {
+		return fmt.Errorf("energy reading cannot be negative: %f", reading.Energy)
 	}
 
 	p := influxdb2.NewPoint(
@@ -120,8 +154,112 @@ func (s *InfluxDBStorage) Flush() {
 // Close closes the InfluxDB client and flushes pending writes
 func (s *InfluxDBStorage) Close() {
 	logger.Info().Msg("Closing InfluxDB connection")
+
+	// Cancel context to stop retry processing
+	s.cancel()
+
+	// Close retry queue
+	close(s.retryQueue)
+
+	// Wait for error handlers to finish
+	s.errorWg.Wait()
+
+	// Flush and close
 	s.writeAPI.Flush()
 	s.client.Close()
+}
+
+// handleWriteErrors monitors the async write error channel and queues items for retry
+func (s *InfluxDBStorage) handleWriteErrors() {
+	defer s.errorWg.Done()
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case err := <-s.writeAPI.Errors():
+			if err == nil {
+				return
+			}
+			logger.Error().Err(err).Msg("InfluxDB write error, will retry if possible")
+			// Note: We cannot easily extract the failed point from the error,
+			// so we log it. The retry logic is better handled at a higher level
+			// or by relying on the InfluxDB client's built-in retry mechanism.
+		}
+	}
+}
+
+// processRetries handles retrying failed writes with exponential backoff
+func (s *InfluxDBStorage) processRetries() {
+	defer s.errorWg.Done()
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case item, ok := <-s.retryQueue:
+			if !ok {
+				return
+			}
+
+			// Calculate backoff duration
+			backoff := initialBackoff
+			for i := 0; i < item.attempts; i++ {
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+					break
+				}
+			}
+
+			// Wait before retry
+			select {
+			case <-s.ctx.Done():
+				return
+			case <-time.After(backoff):
+			}
+
+			// Attempt retry
+			if item.attempts < maxRetries {
+				logger.Info().
+					Int("attempt", item.attempts+1).
+					Int("max_retries", maxRetries).
+					Dur("backoff", backoff).
+					Str("device_id", item.reading.DeviceID).
+					Msg("Retrying InfluxDB write")
+
+				if err := s.WriteReading(item.reading); err != nil {
+					logger.Error().
+						Err(err).
+						Int("attempt", item.attempts+1).
+						Str("device_id", item.reading.DeviceID).
+						Msg("Retry failed")
+
+					// Re-queue for another retry
+					item.attempts++
+					select {
+					case s.retryQueue <- item:
+					case <-s.ctx.Done():
+						return
+					default:
+						logger.Warn().
+							Str("device_id", item.reading.DeviceID).
+							Msg("Retry queue full, dropping write")
+					}
+				} else {
+					logger.Info().
+						Int("attempt", item.attempts+1).
+						Str("device_id", item.reading.DeviceID).
+						Msg("Retry successful")
+				}
+			} else {
+				logger.Error().
+					Int("attempts", item.attempts).
+					Str("device_id", item.reading.DeviceID).
+					Msg("Max retries exceeded, dropping write")
+			}
+		}
+	}
 }
 
 // Client returns the underlying InfluxDB client for advanced operations

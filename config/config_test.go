@@ -217,7 +217,7 @@ logging:
 	_ = tmpfile.Close()
 
 	// Set environment variables to override
-	_ = os.Setenv("INFLUXDB_URL", "http://env-host:8086")
+	_ = os.Setenv("INFLUXDB_URL", "https://env-host:8086")
 	_ = os.Setenv("INFLUXDB_TOKEN", "env-token")
 	_ = os.Setenv("INFLUXDB_ORG", "env-org")
 	_ = os.Setenv("INFLUXDB_BUCKET", "env-bucket")
@@ -241,8 +241,8 @@ logging:
 	}
 
 	// Verify environment variables override file values
-	if cfg.InfluxDB.URL != "http://env-host:8086" {
-		t.Errorf("InfluxDB.URL = %v, want http://env-host:8086", cfg.InfluxDB.URL)
+	if cfg.InfluxDB.URL != "https://env-host:8086" {
+		t.Errorf("InfluxDB.URL = %v, want https://env-host:8086", cfg.InfluxDB.URL)
 	}
 	if cfg.InfluxDB.Token != "env-token" {
 		t.Errorf("InfluxDB.Token = %v, want env-token", cfg.InfluxDB.Token)
