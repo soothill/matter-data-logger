@@ -15,6 +15,15 @@ import (
 	"github.com/soothill/matter-data-logger/pkg/metrics"
 )
 
+const (
+	readingsChannelSize  = 100
+	simulatedBaseLoadMin = 10.0  // Minimum base load in watts
+	simulatedLoadRange   = 90.0  // Load range (10-100W)
+	simulatedVariation   = 10.0  // Power variation range (±5W)
+	simulatedBaseVoltage = 120.0 // Base voltage in volts
+	simulatedVoltageVar  = 2.0   // Voltage variation range (±1V, making 119-121V)
+)
+
 // PowerReading represents a power consumption measurement
 type PowerReading struct {
 	DeviceID   string
@@ -40,7 +49,7 @@ type PowerMonitor struct {
 func NewPowerMonitor(pollInterval time.Duration) *PowerMonitor {
 	return &PowerMonitor{
 		pollInterval:     pollInterval,
-		readings:         make(chan *PowerReading, 100),
+		readings:         make(chan *PowerReading, readingsChannelSize),
 		monitoredDevices: make(map[string]context.CancelFunc),
 	}
 }
@@ -176,11 +185,11 @@ func (pm *PowerMonitor) readPower(device *discovery.Device) (*PowerReading, erro
 	// - RMSVoltage (0x0505): unsigned 16-bit, in volts
 	// - RMSCurrent (0x0508): unsigned 16-bit, in milliamps
 
-	baseLoad := 10.0 + rand.Float64()*90.0     // 10-100W base load
-	variation := (rand.Float64() - 0.5) * 10.0 // ±5W variation
+	baseLoad := simulatedBaseLoadMin + rand.Float64()*simulatedLoadRange
+	variation := (rand.Float64() - 0.5) * simulatedVariation
 	power := baseLoad + variation
 
-	voltage := 120.0 + (rand.Float64()-0.5)*2.0 // 119-121V
+	voltage := simulatedBaseVoltage + (rand.Float64()-0.5)*simulatedVoltageVar
 	current := power / voltage
 
 	reading := &PowerReading{

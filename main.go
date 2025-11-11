@@ -25,6 +25,15 @@ import (
 	"github.com/soothill/matter-data-logger/storage"
 )
 
+const (
+	signalChannelSize      = 1
+	discoveryTimeout       = 10 * time.Second
+	alertContextTimeout    = 5 * time.Second
+	readinessCheckTimeout  = 2 * time.Second
+	shutdownTimeout        = 5 * time.Second
+	flushTimeout           = 10 * time.Second
+)
+
 // initializeComponents initializes all application components
 // Returns an error instead of calling Fatal() to allow for testing
 func initializeComponents(cfg *config.Config, metricsPort string) (*notifications.SlackNotifier, *storage.CachingStorage, *storage.InfluxDBStorage, *http.Server, error) {
@@ -146,7 +155,7 @@ func main() {
 	defer cancel()
 
 	// Handle shutdown signals
-	sigChan := make(chan os.Signal, 1)
+	sigChan := make(chan os.Signal, signalChannelSize)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
@@ -209,14 +218,14 @@ func main() {
 func performInitialDiscovery(ctx context.Context, scanner *discovery.Scanner, monitor *monitoring.PowerMonitor, notifier *notifications.SlackNotifier) {
 	logger.Info().Msg("Performing initial device discovery")
 	start := time.Now()
-	devices, discoverErr := scanner.Discover(ctx, 10*time.Second)
+	devices, discoverErr := scanner.Discover(ctx, discoveryTimeout)
 	metrics.DiscoveryDuration.Observe(time.Since(start).Seconds())
 
 	if discoverErr != nil {
 		logger.Error().Err(discoverErr).Msg("Initial discovery failed")
 		// Send Slack alert for discovery failure
 		if notifier != nil && notifier.IsEnabled() {
-			alertCtx, alertCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			alertCtx, alertCancel := context.WithTimeout(context.Background(), alertContextTimeout)
 			defer alertCancel()
 			if notifyErr := notifier.SendDiscoveryFailure(alertCtx, discoverErr); notifyErr != nil {
 				logger.Error().Err(notifyErr).Msg("Failed to send discovery failure alert")
@@ -244,14 +253,14 @@ func performInitialDiscovery(ctx context.Context, scanner *discovery.Scanner, mo
 func performPeriodicDiscovery(ctx context.Context, scanner *discovery.Scanner, monitor *monitoring.PowerMonitor, notifier *notifications.SlackNotifier) {
 	logger.Info().Msg("Performing periodic device discovery")
 	start := time.Now()
-	newDevices, discoverErr := scanner.Discover(ctx, 10*time.Second)
+	newDevices, discoverErr := scanner.Discover(ctx, discoveryTimeout)
 	metrics.DiscoveryDuration.Observe(time.Since(start).Seconds())
 
 	if discoverErr != nil {
 		logger.Error().Err(discoverErr).Msg("Discovery failed")
 		// Send Slack alert for discovery failure (only log, don't block periodic discovery)
 		if notifier != nil && notifier.IsEnabled() {
-			alertCtx, alertCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			alertCtx, alertCancel := context.WithTimeout(context.Background(), alertContextTimeout)
 			defer alertCancel()
 			if notifyErr := notifier.SendDiscoveryFailure(alertCtx, discoverErr); notifyErr != nil {
 				logger.Error().Err(notifyErr).Msg("Failed to send discovery failure alert")
@@ -293,7 +302,7 @@ func healthCheckHandler(w http.ResponseWriter, _ *http.Request) {
 // readinessCheckHandler handles readiness check requests
 func readinessCheckHandler(w http.ResponseWriter, _ *http.Request, db *storage.InfluxDBStorage) {
 	// Check InfluxDB connection
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), readinessCheckTimeout)
 	defer cancel()
 
 	if healthErr := db.Health(ctx); healthErr != nil {
@@ -323,7 +332,7 @@ func performGracefulShutdown(server *http.Server, monitor *monitoring.PowerMonit
 	logger.Info().Msg("Initiating graceful shutdown...")
 
 	// Shutdown HTTP server gracefully
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.Error().Err(err).Msg("HTTP server shutdown error")
@@ -341,7 +350,7 @@ func performGracefulShutdown(server *http.Server, monitor *monitoring.PowerMonit
 // performCleanup flushes database and waits for goroutines to finish
 func performCleanup(db *storage.CachingStorage, wg *sync.WaitGroup) {
 	// Flush InfluxDB with timeout
-	flushCtx, flushCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	flushCtx, flushCancel := context.WithTimeout(context.Background(), flushTimeout)
 	defer flushCancel()
 
 	// Note: Current InfluxDB client Flush() doesn't accept context
