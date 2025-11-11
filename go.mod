@@ -2,7 +2,7 @@ module github.com/soothill/matter-data-logger
 
 go 1.24.0
 
-toolchain go1.24.7
+toolchain go1.24.8
 
 require (
 	github.com/grandcat/zeroconf v1.0.0
