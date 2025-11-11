@@ -338,12 +338,52 @@ func (s *InfluxDBStorage) Health(ctx context.Context) error {
 	return nil
 }
 
-// sanitizeFluxString escapes special characters in strings used in Flux queries
-// to prevent injection attacks
+// sanitizeFluxString escapes special characters in Flux query strings to prevent injection.
+//
+// Flux Injection Prevention:
+// Flux queries use double-quoted strings for values. To prevent injection attacks,
+// we must escape characters that could break out of string context or introduce
+// malicious query logic.
+//
+// Escaped characters:
+//   - Backslash (\) - must be escaped first to prevent double-escaping issues
+//   - Double quote (") - prevents breaking out of string literals
+//   - Newline (\n) - prevents multi-line injection attacks
+//   - Carriage return (\r) - prevents control character injection
+//   - Null byte (\x00) - prevents truncation attacks
+//
+// Additional safety measures:
+//   - Input length is limited to 1000 characters to prevent resource exhaustion
+//   - The function is used for all user-controlled query parameters
+//
+// Example attack prevention:
+//   Input:  device-1" |> drop() |> from(bucket: "evil
+//   Output: device-1\" |> drop() |> from(bucket: \"evil
+//   Result: Treated as literal string, not executed as Flux code
+//
+// Note: While Flux doesn't support parameterized queries like SQL, this approach
+// provides defense-in-depth against injection attacks.
 func sanitizeFluxString(s string) string {
-	// Escape backslashes first, then quotes
+	// Limit input length to prevent resource exhaustion attacks
+	const maxFluxStringLength = 1000
+	if len(s) > maxFluxStringLength {
+		s = s[:maxFluxStringLength]
+	}
+
+	// Escape backslashes first (must be done before other escaping)
+	// This prevents double-escaping issues
 	s = strings.ReplaceAll(s, `\`, `\\`)
+
+	// Escape double quotes to prevent breaking out of string context
 	s = strings.ReplaceAll(s, `"`, `\"`)
+
+	// Escape newlines and carriage returns to prevent multi-line injection
+	s = strings.ReplaceAll(s, "\n", `\n`)
+	s = strings.ReplaceAll(s, "\r", `\r`)
+
+	// Remove null bytes to prevent truncation attacks
+	s = strings.ReplaceAll(s, "\x00", "")
+
 	return s
 }
 

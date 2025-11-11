@@ -378,6 +378,43 @@ func TestSanitizeFluxString(t *testing.T) {
 			input:    "",
 			expected: "",
 		},
+		{
+			name:     "newline injection",
+			input:    "device\nmalicious",
+			expected: `device\nmalicious`,
+		},
+		{
+			name:     "carriage return injection",
+			input:    "device\rmalicious",
+			expected: `device\rmalicious`,
+		},
+		{
+			name:     "null byte truncation",
+			input:    "device\x00hidden",
+			expected: "devicehidden",
+		},
+		{
+			name:     "complex injection attempt",
+			input:    "dev\"\n|> drop()\r\x00",
+			expected: `dev\"\n|> drop()\r`,
+		},
+		{
+			name: "very long string truncation",
+			input: func() string {
+				b := make([]byte, 2000)
+				for i := range b {
+					b[i] = 'a' // Use 'a' instead of null bytes
+				}
+				return string(b)
+			}(),
+			expected: func() string {
+				b := make([]byte, 1000)
+				for i := range b {
+					b[i] = 'a'
+				}
+				return string(b)
+			}(),
+		},
 	}
 
 	for _, tt := range tests {
