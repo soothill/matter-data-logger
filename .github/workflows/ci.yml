@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ['1.23.x', '1.24.x']
+        go-version: ['1.23.x']
 
     steps:
     - name: Checkout code
@@ -27,8 +27,8 @@ jobs:
         go-version: ${{ matrix.go-version }}
         cache: false
 
-    - name: Enable Go toolchain auto-download
-      run: echo "GOTOOLCHAIN=auto" >> $GITHUB_ENV
+    - name: Enable Go toolchain local-only
+      run: echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
 
     - name: Cache Go modules
       uses: actions/cache@v4
@@ -71,11 +71,11 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24.x'
+        go-version: '1.23.x'
         cache: false
 
-    - name: Enable Go toolchain auto-download
-      run: echo "GOTOOLCHAIN=auto" >> $GITHUB_ENV
+    - name: Enable Go toolchain local-only
+      run: echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
 
     - name: Download dependencies
       run: go mod download
@@ -97,11 +97,11 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24.x'
+        go-version: '1.23.x'
         cache: false
 
-    - name: Enable Go toolchain auto-download
-      run: echo "GOTOOLCHAIN=auto" >> $GITHUB_ENV
+    - name: Enable Go toolchain local-only
+      run: echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
 
     - name: Build
       run: make build
@@ -126,11 +126,11 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24.x'
+        go-version: '1.23.x'
         cache: false
 
-    - name: Enable Go toolchain auto-download
-      run: echo "GOTOOLCHAIN=auto" >> $GITHUB_ENV
+    - name: Enable Go toolchain local-only
+      run: echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
 
     - name: Cache Go modules
       uses: actions/cache@v4
@@ -138,9 +138,9 @@ jobs:
         path: |
           ~/.cache/go-build
           ~/go/pkg/mod
-        key: ${{ runner.os }}-go-1.24.x-${{ hashFiles('**/go.sum') }}
+        key: ${{ runner.os }}-go-1.23.x-${{ hashFiles('**/go.sum') }}
         restore-keys: |
-          ${{ runner.os }}-go-1.24.x-
+          ${{ runner.os }}-go-1.23.x-
 
     - name: Download dependencies
       run: go mod download
