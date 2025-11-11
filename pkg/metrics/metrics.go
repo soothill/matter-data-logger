@@ -1,7 +1,13 @@
 // Copyright (c) 2025 Darren Soothill
 // Licensed under the MIT License
 
-// Package metrics provides Prometheus metrics for the Matter data logger.
+// Package metrics provides Prometheus instrumentation for monitoring Matter device
+// discovery, power readings, and InfluxDB storage operations. All metrics are
+// automatically registered with Prometheus and exposed via the /metrics endpoint.
+//
+// The metrics include counters for tracking total operations and errors, gauges
+// for current device counts and readings, histograms for operation durations,
+// and gauge vectors for per-device power measurements.
 package metrics
 
 import (

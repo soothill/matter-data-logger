@@ -7,7 +7,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -142,22 +141,4 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
-}
-
-// GetEnvOrDefault returns environment variable value or default
-func GetEnvOrDefault(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
-// GetEnvAsIntOrDefault returns environment variable as int or default
-func GetEnvAsIntOrDefault(key string, defaultValue int) int {
-	if value := os.Getenv(key); value != "" {
-		if intVal, err := strconv.Atoi(value); err == nil {
-			return intVal
-		}
-	}
-	return defaultValue
 }

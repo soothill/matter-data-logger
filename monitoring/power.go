@@ -12,6 +12,7 @@ import (
 
 	"github.com/soothill/matter-data-logger/discovery"
 	"github.com/soothill/matter-data-logger/pkg/logger"
+	"github.com/soothill/matter-data-logger/pkg/metrics"
 )
 
 // PowerReading represents a power consumption measurement
@@ -125,12 +126,18 @@ func (pm *PowerMonitor) monitorDevice(ctx context.Context, device *discovery.Dev
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			start := time.Now()
 			reading, err := pm.readPower(device)
+			metrics.PowerReadingDuration.Observe(time.Since(start).Seconds())
+
 			if err != nil {
 				logger.Error().Err(err).Str("device_id", deviceID).Str("device_name", device.Name).
 					Msg("Error reading power from device")
+				metrics.PowerReadingErrors.Inc()
 				continue
 			}
+
+			metrics.PowerReadingsTotal.Inc()
 
 			select {
 			case pm.readings <- reading:
