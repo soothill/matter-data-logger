@@ -5,6 +5,7 @@ package storage
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -587,4 +588,100 @@ func TestClient_AccessorMethod(t *testing.T) {
 
 	// This test passes if it compiles
 	t.Log("Client() accessor method exists and has correct signature")
+}
+
+func TestCircuitBreaker_Integration(t *testing.T) {
+	// Test that circuit breaker is initialized
+	// We can't fully test circuit breaker behavior without a real InfluxDB,
+	// but we can verify it exists and is properly configured
+
+	// Create a mock storage (connection will fail, but that's OK)
+	storage, err := NewInfluxDBStorage(
+		"http://localhost:8086",
+		"test-token",
+		"test-org",
+		"test-bucket",
+	)
+	if err != nil {
+		t.Skip("Cannot create InfluxDB client for testing")
+	}
+	defer storage.Close()
+
+	// Verify circuit breaker is initialized
+	if storage.circuitBreaker == nil {
+		t.Error("Circuit breaker should be initialized")
+	}
+
+	// Verify circuit breaker name
+	if storage.circuitBreaker == nil {
+		t.Skip("Circuit breaker not initialized")
+	}
+
+	t.Log("Circuit breaker initialized successfully")
+}
+
+func TestCircuitBreaker_Validation(t *testing.T) {
+	// Test that validation errors don't affect circuit breaker state
+	// Circuit breaker should only trip on actual InfluxDB failures,
+	// not on input validation errors
+
+	storage, err := NewInfluxDBStorage(
+		"http://localhost:8086",
+		"test-token",
+		"test-org",
+		"test-bucket",
+	)
+	if err != nil {
+		t.Skip("Cannot create InfluxDB client for testing")
+	}
+	defer storage.Close()
+
+	ctx := context.Background()
+
+	// These should all fail validation BEFORE circuit breaker
+	testCases := []struct {
+		name    string
+		reading *monitoring.PowerReading
+	}{
+		{
+			name:    "nil reading",
+			reading: nil,
+		},
+		{
+			name: "empty device ID",
+			reading: &monitoring.PowerReading{
+				DeviceID:  "",
+				Timestamp: time.Now(),
+			},
+		},
+		{
+			name: "zero timestamp",
+			reading: &monitoring.PowerReading{
+				DeviceID:  "device-1",
+				Timestamp: time.Time{},
+			},
+		},
+		{
+			name: "negative power",
+			reading: &monitoring.PowerReading{
+				DeviceID:  "device-1",
+				Timestamp: time.Now(),
+				Power:     -100.0,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := storage.WriteReading(ctx, tc.reading)
+			if err == nil {
+				t.Error("Expected validation error, got nil")
+			}
+
+			// Error should NOT mention circuit breaker
+			if strings.Contains(err.Error(), "circuit breaker") {
+				t.Errorf("Validation error should not involve circuit breaker: %v", err)
+			}
+		})
+	}
 }

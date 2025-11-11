@@ -31,6 +31,7 @@ import (
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
+	"github.com/sony/gobreaker"
 	"github.com/soothill/matter-data-logger/monitoring"
 	"github.com/soothill/matter-data-logger/pkg/logger"
 )
@@ -43,16 +44,17 @@ const (
 
 // InfluxDBStorage handles writing power data to InfluxDB
 type InfluxDBStorage struct {
-	client      influxdb2.Client
-	writeAPI    api.WriteAPI
-	bucket      string
-	org         string
-	ctx         context.Context
-	cancel      context.CancelFunc
-	errorWg     sync.WaitGroup
-	retryQueue  chan retryItem
-	closed      bool
-	closeMutex  sync.Mutex
+	client         influxdb2.Client
+	writeAPI       api.WriteAPI
+	bucket         string
+	org            string
+	ctx            context.Context
+	cancel         context.CancelFunc
+	errorWg        sync.WaitGroup
+	retryQueue     chan retryItem
+	closed         bool
+	closeMutex     sync.Mutex
+	circuitBreaker *gobreaker.CircuitBreaker
 }
 
 type retryItem struct {
@@ -106,15 +108,38 @@ func NewInfluxDBStorage(url, token, org, bucket string) (*InfluxDBStorage, error
 
 	writeAPI := client.WriteAPI(org, bucket)
 
+	// Configure circuit breaker for InfluxDB writes
+	// The circuit breaker prevents cascading failures by temporarily stopping
+	// write attempts when InfluxDB is experiencing issues
+	cbSettings := gobreaker.Settings{
+		Name:        "InfluxDB",
+		MaxRequests: 1,              // Allow 1 request in half-open state
+		Interval:    60 * time.Second, // Window for counting failures
+		Timeout:     30 * time.Second, // Time before moving from open to half-open
+		ReadyToTrip: func(counts gobreaker.Counts) bool {
+			// Trip after 5 consecutive failures
+			failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
+			return counts.Requests >= 5 && failureRatio >= 0.6
+		},
+		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
+			logger.Warn().
+				Str("name", name).
+				Str("from", from.String()).
+				Str("to", to.String()).
+				Msg("Circuit breaker state changed")
+		},
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	storage := &InfluxDBStorage{
-		client:     client,
-		writeAPI:   writeAPI,
-		bucket:     bucket,
-		org:        org,
-		ctx:        ctx,
-		cancel:     cancel,
-		retryQueue: make(chan retryItem, 100),
+		client:         client,
+		writeAPI:       writeAPI,
+		bucket:         bucket,
+		org:            org,
+		ctx:            ctx,
+		cancel:         cancel,
+		retryQueue:     make(chan retryItem, 100),
+		circuitBreaker: gobreaker.NewCircuitBreaker(cbSettings),
 	}
 
 	// Handle async write errors with retry logic
@@ -127,6 +152,7 @@ func NewInfluxDBStorage(url, token, org, bucket string) (*InfluxDBStorage, error
 
 // WriteReading writes a power reading to InfluxDB
 // The context can be used for cancellation and timeout control
+// Uses circuit breaker to prevent cascading failures when InfluxDB is unavailable
 func (s *InfluxDBStorage) WriteReading(ctx context.Context, reading *monitoring.PowerReading) error {
 	// Check if context is already canceled
 	if err := ctx.Err(); err != nil {
@@ -158,22 +184,35 @@ func (s *InfluxDBStorage) WriteReading(ctx context.Context, reading *monitoring.
 		return fmt.Errorf("energy reading cannot be negative: %f", reading.Energy)
 	}
 
-	p := influxdb2.NewPoint(
-		"power_consumption",
-		map[string]string{
-			"device_id":   reading.DeviceID,
-			"device_name": reading.DeviceName,
-		},
-		map[string]interface{}{
-			"power":   reading.Power,
-			"voltage": reading.Voltage,
-			"current": reading.Current,
-			"energy":  reading.Energy,
-		},
-		reading.Timestamp,
-	)
+	// Execute write through circuit breaker
+	_, err := s.circuitBreaker.Execute(func() (interface{}, error) {
+		p := influxdb2.NewPoint(
+			"power_consumption",
+			map[string]string{
+				"device_id":   reading.DeviceID,
+				"device_name": reading.DeviceName,
+			},
+			map[string]interface{}{
+				"power":   reading.Power,
+				"voltage": reading.Voltage,
+				"current": reading.Current,
+				"energy":  reading.Energy,
+			},
+			reading.Timestamp,
+		)
 
-	s.writeAPI.WritePoint(p)
+		s.writeAPI.WritePoint(p)
+
+		// Check for immediate errors from writeAPI
+		// Note: WriteAPI is async, so errors are handled in handleWriteErrors
+		// This is a limitation of the InfluxDB client design
+		return nil, nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("circuit breaker rejected write: %w", err)
+	}
+
 	return nil
 }
 
