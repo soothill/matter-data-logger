@@ -256,6 +256,82 @@ func initializeComponents(cfg *config.Config, metricsPort string) (*notification
 	return notifier, db, influxDB, server, nil
 }
 
+// startMetricsServer starts the HTTP server for metrics and health checks
+func startMetricsServer(server *http.Server, wg *sync.WaitGroup) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		logger.Info().Str("addr", server.Addr).Msg("Starting metrics and health check server (localhost only)")
+		if serverErr := server.ListenAndServe(); serverErr != nil && serverErr != http.ErrServerClosed {
+			logger.Error().Err(serverErr).Msg("Metrics server failed")
+		}
+	}()
+}
+
+// startDataWriter starts the goroutine that writes power readings to the database
+func startDataWriter(ctx context.Context, db *storage.CachingStorage, monitor *monitoring.PowerMonitor, wg *sync.WaitGroup) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				logger.Info().Msg("Data writer goroutine shutting down")
+				return
+			case reading, ok := <-monitor.Readings():
+				if !ok {
+					logger.Info().Msg("Readings channel closed, data writer exiting")
+					return
+				}
+				writeErr := db.WriteReading(ctx, reading)
+				if writeErr != nil {
+					logger.Error().Err(writeErr).Str("device_id", reading.DeviceID).
+						Msg("Failed to write reading to InfluxDB")
+					metrics.InfluxDBWriteErrors.Inc()
+				} else {
+					metrics.InfluxDBWritesTotal.Inc()
+					metrics.CurrentPower.WithLabelValues(reading.DeviceID, reading.DeviceName).Set(reading.Power)
+					metrics.CurrentVoltage.WithLabelValues(reading.DeviceID, reading.DeviceName).Set(reading.Voltage)
+					metrics.CurrentCurrent.WithLabelValues(reading.DeviceID, reading.DeviceName).Set(reading.Current)
+				}
+			}
+		}
+	}()
+}
+
+// setupSignalHandler sets up graceful shutdown on interrupt signals
+func setupSignalHandler(server *http.Server, monitor *monitoring.PowerMonitor, cancel context.CancelFunc) {
+	sigChan := make(chan os.Signal, signalChannelSize)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		sig := <-sigChan
+		logger.Info().Str("signal", sig.String()).Msg("Received shutdown signal")
+		performGracefulShutdown(server, monitor, cancel)
+	}()
+}
+
+// runMainLoop runs the main discovery loop
+func runMainLoop(ctx context.Context, scanner *discovery.Scanner, monitor *monitoring.PowerMonitor, notifier *notifications.SlackNotifier, discoveryInterval time.Duration, db *storage.CachingStorage, wg *sync.WaitGroup) {
+	discoveryTicker := time.NewTicker(discoveryInterval)
+	defer discoveryTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Info().Msg("Shutting down")
+			performCleanup(db, wg)
+			return
+
+		case <-discoveryTicker.C:
+			// Check context before discovery operation
+			if ctx.Err() != nil {
+				return
+			}
+			performPeriodicDiscovery(ctx, scanner, monitor, notifier)
+		}
+	}
+}
+
 func main() {
 	configPath := flag.String("config", "config.yaml", "Path to configuration file")
 	metricsPort := flag.String("metrics-port", "9090", "Port for Prometheus metrics endpoint")
@@ -299,15 +375,12 @@ func main() {
 	// WaitGroup to track goroutines
 	var wg sync.WaitGroup
 
+	// Context for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Start metrics HTTP server
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		logger.Info().Str("addr", server.Addr).Msg("Starting metrics and health check server (localhost only)")
-		if serverErr := server.ListenAndServe(); serverErr != nil && serverErr != http.ErrServerClosed {
-			logger.Error().Err(serverErr).Msg("Metrics server failed")
-		}
-	}()
+	startMetricsServer(server, &wg)
 
 	// Create device scanner
 	scanner := discovery.NewScanner(cfg.Matter.ServiceType, cfg.Matter.Domain)
@@ -315,72 +388,17 @@ func main() {
 	// Create power monitor with scanner reference for fresh device info
 	monitor := monitoring.NewPowerMonitor(cfg.Matter.PollInterval, scanner, cfg.Matter.ReadingsChannelSize)
 
-	// Context for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	// Handle shutdown signals
-	sigChan := make(chan os.Signal, signalChannelSize)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigChan
-		logger.Info().Str("signal", sig.String()).Msg("Received shutdown signal")
-		performGracefulShutdown(server, monitor, cancel)
-	}()
+	setupSignalHandler(server, monitor, cancel)
 
 	// Start data writer goroutine
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for {
-			select {
-			case <-ctx.Done():
-				logger.Info().Msg("Data writer goroutine shutting down")
-				return
-			case reading, ok := <-monitor.Readings():
-				if !ok {
-					logger.Info().Msg("Readings channel closed, data writer exiting")
-					return
-				}
-				writeErr := db.WriteReading(ctx, reading)
-				if writeErr != nil {
-					logger.Error().Err(writeErr).Str("device_id", reading.DeviceID).
-						Msg("Failed to write reading to InfluxDB")
-					metrics.InfluxDBWriteErrors.Inc()
-				} else {
-					metrics.InfluxDBWritesTotal.Inc()
-					metrics.CurrentPower.WithLabelValues(reading.DeviceID, reading.DeviceName).Set(reading.Power)
-					metrics.CurrentVoltage.WithLabelValues(reading.DeviceID, reading.DeviceName).Set(reading.Voltage)
-					metrics.CurrentCurrent.WithLabelValues(reading.DeviceID, reading.DeviceName).Set(reading.Current)
-				}
-			}
-		}
-	}()
+	startDataWriter(ctx, db, monitor, &wg)
 
 	// Initial device discovery
 	performInitialDiscovery(ctx, scanner, monitor, notifier)
 
-	// Periodic device discovery
-	discoveryTicker := time.NewTicker(cfg.Matter.DiscoveryInterval)
-	defer discoveryTicker.Stop()
-
-	// Main loop
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Info().Msg("Shutting down")
-			performCleanup(db, &wg)
-			return
-
-		case <-discoveryTicker.C:
-			// Check context before discovery operation
-			if ctx.Err() != nil {
-				return
-			}
-			performPeriodicDiscovery(ctx, scanner, monitor, notifier)
-		}
-	}
+	// Run main discovery loop
+	runMainLoop(ctx, scanner, monitor, notifier, cfg.Matter.DiscoveryInterval, db, &wg)
 }
 
 // performInitialDiscovery performs the initial device discovery and starts monitoring
