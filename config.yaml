@@ -33,3 +33,22 @@ matter:
 logging:
   # Log level: debug, info, warn, error
   level: "info"
+
+notifications:
+  # Slack webhook URL for alerts (optional)
+  # Get webhook URL from: https://api.slack.com/messaging/webhooks
+  # Leave empty to disable Slack notifications
+  slack_webhook_url: ""
+
+cache:
+  # Local cache directory for storing data when InfluxDB is unavailable
+  # Default: /var/cache/matter-data-logger
+  directory: "/var/cache/matter-data-logger"
+
+  # Maximum cache size in bytes (default: 100MB)
+  # Format: bytes (e.g., 104857600 for 100MB)
+  max_size: 104857600
+
+  # Maximum age of cached items before cleanup (default: 24h)
+  # Format: duration (e.g., 24h, 48h, 7d)
+  max_age: 24h

@@ -16,9 +16,11 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	InfluxDB InfluxDBConfig `yaml:"influxdb"`
-	Matter   MatterConfig   `yaml:"matter"`
-	Logging  LoggingConfig  `yaml:"logging"`
+	InfluxDB      InfluxDBConfig      `yaml:"influxdb"`
+	Matter        MatterConfig        `yaml:"matter"`
+	Logging       LoggingConfig       `yaml:"logging"`
+	Notifications NotificationsConfig `yaml:"notifications"`
+	Cache         CacheConfig         `yaml:"cache"`
 }
 
 // InfluxDBConfig holds InfluxDB connection settings
@@ -40,6 +42,18 @@ type MatterConfig struct {
 // LoggingConfig holds logging settings
 type LoggingConfig struct {
 	Level string `yaml:"level"`
+}
+
+// NotificationsConfig holds notification settings
+type NotificationsConfig struct {
+	SlackWebhookURL string `yaml:"slack_webhook_url"`
+}
+
+// CacheConfig holds local cache settings
+type CacheConfig struct {
+	Directory string        `yaml:"directory"`
+	MaxSize   int64         `yaml:"max_size"` // bytes
+	MaxAge    time.Duration `yaml:"max_age"`
 }
 
 // Load reads configuration from a YAML file and applies environment variable overrides
@@ -101,6 +115,12 @@ func (c *Config) applyEnvironmentOverrides() {
 			fmt.Fprintf(os.Stderr, "Warning: Failed to parse MATTER_POLL_INTERVAL '%s': %v\n", interval, parseErr)
 		}
 	}
+	if webhookURL := os.Getenv("SLACK_WEBHOOK_URL"); webhookURL != "" {
+		c.Notifications.SlackWebhookURL = webhookURL
+	}
+	if cacheDir := os.Getenv("CACHE_DIRECTORY"); cacheDir != "" {
+		c.Cache.Directory = cacheDir
+	}
 }
 
 // setDefaults sets default values for configuration fields if not provided
@@ -119,6 +139,15 @@ func (c *Config) setDefaults() {
 	}
 	if c.Logging.Level == "" {
 		c.Logging.Level = "info"
+	}
+	if c.Cache.Directory == "" {
+		c.Cache.Directory = "/var/cache/matter-data-logger"
+	}
+	if c.Cache.MaxSize == 0 {
+		c.Cache.MaxSize = 100 * 1024 * 1024 // 100 MB
+	}
+	if c.Cache.MaxAge == 0 {
+		c.Cache.MaxAge = 24 * time.Hour
 	}
 }
 
