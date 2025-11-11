@@ -292,10 +292,14 @@ This document tracks code improvement opportunities identified through comprehen
   - Ensures power readings reflect current device names even if devices are renamed
   - Updated all tests with mock scanner implementation
 
-### 25. Add Missing Error Context
-- [ ] **Files**: Multiple
-- [ ] **Issue**: Many errors lack operation context
-- [ ] **Fix**: Use pattern: `fmt.Errorf("operation %s failed: %w", op, err)`
+### 25. ✅ Add Missing Error Context - COMPLETED
+- [x] **Files**: `storage/cache.go`
+- [x] **Issue**: Many errors lack operation context
+- [x] **Fix**: Completed in commit `afb2789`
+  - Added error context to WriteBatch operation
+  - Now includes reading index (i+1/total) and device_id in error messages
+  - Pattern: `fmt.Errorf("failed to write reading %d/%d (device_id=%s): %w", ...)`
+  - Improves debugging by showing exactly which reading in a batch failed
 
 ### 26. ✅ Update All Outdated Dependencies - COMPLETED
 - [x] **File**: `go.mod`, `go.sum`
@@ -320,19 +324,32 @@ This document tracks code improvement opportunities identified through comprehen
   - Updated grpc to v1.76.0 which uses modern google.golang.org/protobuf
   - This is the expected and correct situation for Go modules
 
-### 28. Make Channel Sizes Configurable
-- [ ] **File**: `monitoring/power.go:41`
-- [ ] **Issue**: Readings channel buffer size (100) is arbitrary
-- [ ] **Fix**: Make configurable or calculate based on poll interval × device count
+### 28. ✅ Make Channel Sizes Configurable - COMPLETED
+- [x] **Files**: `config/config.go`, `monitoring/power.go`, `main.go`, test files
+- [x] **Issue**: Readings channel buffer size (100) was hardcoded
+- [x] **Fix**: Completed in commit `ce8c672`
+  - Added ReadingsChannelSize field to MatterConfig
+  - Default value: 100 (maintains existing behavior)
+  - Validation: 1-10000 range when explicitly set, 0 for default
+  - Updated NewPowerMonitor to accept channelSize parameter
+  - Updated all callers in main.go and test files
+  - Users can now tune channel size via config.yaml based on workload
 
 ### 29. Add Metrics Cardinality Limits
 - [ ] **File**: `pkg/metrics/metrics.go`
 - [ ] **Issue**: Unbounded cardinality with device_id labels
 - [ ] **Fix**: Add device count limits or remove device_name label
 
-### 30. Document InfluxDB Connection Pooling
-- [ ] **File**: `storage/influxdb.go`
-- [ ] **Note**: Client already handles pooling, document the behavior
+### 30. ✅ Document InfluxDB Connection Pooling - COMPLETED
+- [x] **File**: `storage/influxdb.go`
+- [x] **Issue**: Connection pooling behavior was undocumented
+- [x] **Fix**: Completed in commit `b4ffc1f`
+  - Added comprehensive package-level documentation
+  - Documented HTTP connection pooling via net/http
+  - Explained default Go http.Transport settings (MaxIdleConns, IdleConnTimeout, etc.)
+  - Documented thread-safety and connection reuse behavior
+  - Added performance characteristics to NewInfluxDBStorage function
+  - No code changes needed - client already handles pooling efficiently
 
 ---
 
@@ -532,14 +549,14 @@ This document tracks code improvement opportunities identified through comprehen
 ## Completion Tracking
 
 - Total Items: 65
-- **Completed**: 27 items ✅
+- **Completed**: 30 items ✅
 - **In Progress**: 0 items
-- **Remaining**: 38 items
+- **Remaining**: 35 items
 
 ### By Priority:
 - Critical (🔴): 5/5 completed (100%) ✅
 - High (🟠): 14/14 completed (100%) ✅ **ALL HIGH PRIORITY ITEMS DONE!**
-- Medium (🟡): 8/16 completed (50%) 🎯
+- Medium (🟡): 11/16 completed (69%) 🎯 **SIGNIFICANT PROGRESS!**
 - Low (🟢): 0/22 completed (0%)
 - Features (🌟): 0/8 completed (0%)
 
@@ -554,6 +571,9 @@ This document tracks code improvement opportunities identified through comprehen
 26. ✅ Use Consistent Error Wrapping (#22) - Completed in commit `bfa4003`
 27. ✅ Add Context Checks in Monitoring Loops (#23) - Completed in commit `e67fa94`
 28. ✅ Fix Device Name Staleness (#24) - Completed in commit `43426f8`
+29. ✅ Add Missing Error Context (#25) - Completed in commit `afb2789`
+30. ✅ Make Channel Sizes Configurable (#28) - Completed in commit `ce8c672`
+31. ✅ Document InfluxDB Connection Pooling (#30) - Completed in commit `b4ffc1f`
 
 ### Previously Completed Items (commit `c09c86c`):
 16. ✅ Define Interfaces for External Dependencies (#12e)
