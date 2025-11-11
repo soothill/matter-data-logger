@@ -685,3 +685,73 @@ func TestCircuitBreaker_Validation(t *testing.T) {
 		})
 	}
 }
+
+// Benchmark tests
+
+func BenchmarkSanitizeFluxString(b *testing.B) {
+	testStrings := []string{
+		"simple-device-123",
+		`device"with"quotes`,
+		`device\with\backslashes`,
+		`") |> drop() //`,
+		`dev"ice\123`,
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, s := range testStrings {
+			_ = sanitizeFluxString(s)
+		}
+	}
+}
+
+func BenchmarkValidatePowerReading(b *testing.B) {
+	reading := &monitoring.PowerReading{
+		DeviceID:   "test-device-1",
+		DeviceName: "Test Device",
+		Timestamp:  time.Now(),
+		Power:      100.5,
+		Voltage:    120.0,
+		Current:    0.8375,
+		Energy:     1.5,
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = validatePowerReading(reading)
+	}
+}
+
+func BenchmarkPowerReadingCreation(b *testing.B) {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = &monitoring.PowerReading{
+			DeviceID:   "device-1",
+			DeviceName: "Device 1",
+			Timestamp:  time.Now(),
+			Power:      100.0,
+			Voltage:    120.0,
+			Current:    0.833,
+			Energy:     1.0,
+		}
+	}
+}
+
+func BenchmarkBatchCreation(b *testing.B) {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		readings := make([]*monitoring.PowerReading, 100)
+		for j := 0; j < 100; j++ {
+			readings[j] = &monitoring.PowerReading{
+				DeviceID:   "device-1",
+				DeviceName: "Device 1",
+				Timestamp:  time.Now(),
+				Power:      100.0,
+				Voltage:    120.0,
+				Current:    0.833,
+				Energy:     1.0,
+			}
+		}
+		_ = readings
+	}
+}

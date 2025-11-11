@@ -652,10 +652,122 @@ Matter devices advertise themselves via mDNS with service type `_matter._tcp`. T
 
 ### No Devices Found
 
+#### Basic Checks
 1. Ensure Matter devices are commissioned and on the same network
-2. Check that mDNS/Bonjour is not blocked by firewall
-3. Verify devices are advertising `_matter._tcp` service
-4. Try scanning with `avahi-browse -a` or `dns-sd -B _matter._tcp`
+2. Verify devices are advertising `_matter._tcp` service
+3. Confirm devices are powered on and connected to WiFi/Thread
+
+#### Firewall Configuration
+mDNS requires specific ports to be open:
+
+```bash
+# Linux (ufw)
+sudo ufw allow 5353/udp  # mDNS
+sudo ufw allow 5540/tcp  # Matter (default port)
+
+# Linux (firewalld)
+sudo firewall-cmd --permanent --add-service=mdns
+sudo firewall-cmd --permanent --add-port=5540/tcp
+sudo firewall-cmd --reload
+
+# Check if ports are blocked
+sudo netstat -tulpn | grep 5353
+```
+
+#### Verify mDNS Service
+
+```bash
+# Check if mDNS/avahi is running
+systemctl status avahi-daemon  # Linux
+systemctl status systemd-resolved  # Alternative on some systems
+
+# Manually scan for devices
+avahi-browse -a -r          # Browse all services
+avahi-browse -r _matter._tcp  # Browse only Matter devices
+dns-sd -B _matter._tcp      # macOS alternative
+
+# Check mDNS responses
+sudo tcpdump -i any port 5353  # Monitor mDNS traffic
+```
+
+#### Docker-Specific Issues
+
+If running in Docker, mDNS discovery requires `--network=host`:
+
+```bash
+# Incorrect (won't discover devices)
+docker run -p 9090:9090 matter-data-logger
+
+# Correct (allows mDNS)
+docker run --network=host matter-data-logger
+```
+
+#### Permission Issues
+
+```bash
+# Grant mDNS capabilities (Linux)
+sudo setcap cap_net_raw+ep /path/to/matter-data-logger
+
+# Or run as root (not recommended for production)
+sudo ./matter-data-logger
+```
+
+### Configuration Errors
+
+#### Validate Configuration
+
+Use the built-in validation before starting:
+
+```bash
+# Validate configuration file
+./matter-data-logger --validate-config
+
+# Validate custom config
+./matter-data-logger --validate-config --config /path/to/config.yaml
+```
+
+#### Common Configuration Issues
+
+1. **Invalid YAML syntax**
+   ```
+   Error: yaml: line 5: could not find expected ':'
+   ```
+   - Check for proper indentation (use spaces, not tabs)
+   - Verify colons are followed by spaces
+   - Use online YAML validator if needed
+
+2. **Missing Required Fields**
+   ```
+   Error: influxdb.url is required
+   ```
+   - Ensure all required fields are present:
+     - `influxdb.url`
+     - `influxdb.token`
+     - `influxdb.organization`
+     - `influxdb.bucket`
+
+3. **Invalid Time Durations**
+   ```
+   Error: discovery_interval must be >= poll_interval
+   ```
+   - Use valid Go duration format: `30s`, `5m`, `1h`
+   - Ensure discovery_interval ≥ poll_interval
+   - Example: discovery_interval: `5m`, poll_interval: `30s`
+
+4. **Environment Variable Override Issues**
+   ```bash
+   # Check if environment variables are set correctly
+   env | grep INFLUX
+   env | grep MATTER
+
+   # Test with explicit variables
+   INFLUXDB_URL=http://localhost:8086 ./matter-data-logger --validate-config
+   ```
+
+5. **Token/URL Format Issues**
+   - InfluxDB token should be alphanumeric string (no quotes in YAML)
+   - URL must include protocol: `http://` or `https://`
+   - Don't include trailing slashes in URLs
 
 ### InfluxDB Connection Failed
 
@@ -690,6 +802,88 @@ Matter devices advertise themselves via mDNS with service type `_matter._tcp`. T
 1. Reduce polling interval in config
 2. Limit number of monitored devices
 3. Increase InfluxDB batch write size
+
+### Debugging Device Discovery
+
+#### Enable Debug Logging
+
+```bash
+# Set debug log level in config.yaml
+logging:
+  level: debug
+
+# Or via environment variable
+LOG_LEVEL=debug ./matter-data-logger
+```
+
+#### Monitor Discovery Process
+
+```bash
+# Watch application logs for discovery events
+./matter-data-logger 2>&1 | grep -i discover
+
+# Check discovered device count
+curl -s localhost:9090/metrics | grep matter_devices_discovered
+
+# Check power device count
+curl -s localhost:9090/metrics | grep matter_power_devices
+
+# Monitor devices being actively polled
+curl -s localhost:9090/metrics | grep matter_devices_monitored
+```
+
+#### Verify Device Capabilities
+
+Check if discovered devices have power measurement capability:
+
+```bash
+# Look for cluster information in logs
+./matter-data-logger 2>&1 | grep -i "has_power_measurement"
+
+# Expected output for power device:
+# has_power_measurement=true
+
+# Devices must advertise cluster 0x0B04 or 0x0091 in TXT records
+```
+
+#### Network Isolation Issues
+
+```bash
+# Check if devices are on same network/VLAN
+ip addr show                    # Your host IP
+arp -a | grep <device-ip>      # Device MAC/IP
+
+# Test multicast connectivity
+ping -c 3 224.0.0.251          # mDNS multicast address
+
+# Verify routing table
+ip route show
+```
+
+#### Discovery Timeout Issues
+
+If discovery consistently times out or finds no devices:
+
+1. Increase discovery timeout in config:
+   ```yaml
+   matter:
+     discovery_interval: 10m  # Longer interval
+   ```
+
+2. Check network latency:
+   ```bash
+   ping -c 10 <device-ip>
+   mtr <device-ip>  # Monitor route
+   ```
+
+3. Disable WiFi power saving:
+   ```bash
+   # Linux
+   sudo iw dev wlan0 set power_save off
+
+   # Check current setting
+   iw dev wlan0 get power_save
+   ```
 
 ## Contributing
 

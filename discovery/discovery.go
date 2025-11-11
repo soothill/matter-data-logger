@@ -112,6 +112,58 @@ func NewScanner(serviceType, domain string) *Scanner {
 }
 
 // Discover performs a single discovery scan for Matter devices
+//
+// # Concurrency Architecture
+//
+// This function uses a producer-consumer pattern with goroutines and channels:
+//
+// 1. Producer: zeroconf.Resolver.Browse() (external library)
+//    - Scans network for mDNS/DNS-SD advertisements
+//    - Sends ServiceEntry records to the 'entries' channel
+//    - Runs until context timeout expires
+//
+// 2. Consumer: Local goroutine (lines 128-154)
+//    - Receives ServiceEntry records from the 'entries' channel
+//    - Parses each entry into a Device struct
+//    - Updates two data structures concurrently
+//
+// # Synchronization Strategy
+//
+// Two separate mutexes protect two different data structures:
+//
+// 1. s.mu (RWMutex): Protects s.devices map (Scanner-wide state)
+//    - This map persists across multiple Discover() calls
+//    - Allows safe concurrent reads (GetDevices, GetPowerDevices)
+//    - Write-locked only during device insertion
+//
+// 2. mu (Mutex): Protects discoveredDevices slice (function-local state)
+//    - This slice only tracks newly discovered devices in this scan
+//    - Returned to caller after scan completes
+//    - Simpler mutex since no concurrent reads needed
+//
+// # Data Flow
+//
+//	┌──────────────┐     entries      ┌─────────────────┐
+//	│   zeroconf   │─────channel──────>│  Consumer      │
+//	│   Resolver   │   (buffered 10)   │  Goroutine     │
+//	└──────────────┘                   └─────────────────┘
+//	                                            │
+//	                                            v
+//	                                    ┌───────────────┐
+//	                                    │ Parse Entry   │
+//	                                    └───────────────┘
+//	                                            │
+//	                                            v
+//	                                   ┌────────────────┐
+//	                                   │ Update Maps    │
+//	                                   │ (mutex-locked) │
+//	                                   └────────────────┘
+//
+// # Buffering Rationale
+//
+// The 'entries' channel is buffered (capacity 10) to prevent blocking the
+// zeroconf resolver when device parsing is slower than discovery rate.
+// This prevents packet loss during bursts of mDNS advertisements.
 func (s *Scanner) Discover(ctx context.Context, timeout time.Duration) ([]*Device, error) {
 	resolver, err := zeroconf.NewResolver(nil)
 	if err != nil {
@@ -121,23 +173,27 @@ func (s *Scanner) Discover(ctx context.Context, timeout time.Duration) ([]*Devic
 	// Buffered channel to prevent blocking zeroconf resolver
 	entries := make(chan *zeroconf.ServiceEntry, 10)
 	discoveredDevices := make([]*Device, 0)
-	var mu sync.Mutex // Protects discoveredDevices slice
+	var mu sync.Mutex // Protects discoveredDevices slice (function-local)
 	var wg sync.WaitGroup
 
+	// Consumer goroutine: processes discovered devices concurrently
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		// Loop until entries channel is closed by zeroconf resolver
 		for entry := range entries {
 			device := s.parseServiceEntry(entry)
 			if device != nil {
 				deviceID := device.GetDeviceID()
 
-				// Thread-safe update of devices map
+				// Critical Section 1: Update Scanner-wide devices map
+				// Uses RWMutex to allow concurrent reads from other goroutines
 				s.mu.Lock()
 				s.devices[deviceID] = device
 				s.mu.Unlock()
 
-				// Thread-safe append to discoveredDevices
+				// Critical Section 2: Update function-local discoveredDevices slice
+				// Uses simple Mutex since no concurrent readers
 				mu.Lock()
 				discoveredDevices = append(discoveredDevices, device)
 				mu.Unlock()

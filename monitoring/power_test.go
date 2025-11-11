@@ -436,3 +436,125 @@ func TestIsMonitoring_ThreadSafety(_ *testing.T) {
 		<-done
 	}
 }
+
+// Benchmark tests
+
+func BenchmarkReadPower(b *testing.B) {
+	scanner := newMockScanner()
+	monitor := NewPowerMonitor(30 * time.Second, scanner, 100)
+
+	device := &discovery.Device{
+		Name: "Test Device",
+		TXTRecord: map[string]string{
+			"D": "test-device",
+		},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = monitor.readPower(device)
+	}
+}
+
+func BenchmarkReadPower_Parallel(b *testing.B) {
+	scanner := newMockScanner()
+	monitor := NewPowerMonitor(30 * time.Second, scanner, 100)
+
+	device := &discovery.Device{
+		Name: "Test Device",
+		TXTRecord: map[string]string{
+			"D": "test-device",
+		},
+	}
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, _ = monitor.readPower(device)
+		}
+	})
+}
+
+func BenchmarkIsMonitoring(b *testing.B) {
+	scanner := newMockScanner()
+	monitor := NewPowerMonitor(30 * time.Second, scanner, 100)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Add some devices to monitor
+	for i := 0; i < 10; i++ {
+		device := &discovery.Device{
+			Name: "Device",
+			TXTRecord: map[string]string{
+				"D": string(rune('A' + i)),
+			},
+		}
+		monitor.StartMonitoringDevice(ctx, device)
+	}
+
+	deviceID := "A"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = monitor.IsMonitoring(deviceID)
+	}
+}
+
+func BenchmarkGetMonitoredDeviceCount(b *testing.B) {
+	scanner := newMockScanner()
+	monitor := NewPowerMonitor(30 * time.Second, scanner, 100)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Add some devices to monitor
+	for i := 0; i < 100; i++ {
+		device := &discovery.Device{
+			Name: "Device",
+			TXTRecord: map[string]string{
+				"D": string(rune('A' + i)),
+			},
+		}
+		monitor.StartMonitoringDevice(ctx, device)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = monitor.GetMonitoredDeviceCount()
+	}
+}
+
+func BenchmarkStartMonitoringDevice(b *testing.B) {
+	scanner := newMockScanner()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		monitor := NewPowerMonitor(30 * time.Second, scanner, 100)
+		device := &discovery.Device{
+			Name: "Device",
+			TXTRecord: map[string]string{
+				"D": string(rune('A' + (i % 26))),
+			},
+		}
+		b.StartTimer()
+
+		monitor.StartMonitoringDevice(ctx, device)
+	}
+}
+
+func BenchmarkPowerReadingGeneration(b *testing.B) {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = &PowerReading{
+			DeviceID:   "device-1",
+			DeviceName: "Test Device",
+			Timestamp:  time.Now(),
+			Power:      100.0,
+			Voltage:    120.0,
+			Current:    0.833,
+			Energy:     1.0,
+		}
+	}
+}

@@ -330,3 +330,84 @@ func TestScanner_Discover_MultipleRuns(t *testing.T) {
 		t.Error("scanner.devices map is nil after multiple discoveries")
 	}
 }
+
+// Benchmark tests
+
+func BenchmarkDevice_HasPowerMeasurement(b *testing.B) {
+	device := &Device{
+		TXTRecord: map[string]string{
+			"C": "0006,0008,0B04,001D,0091",
+		},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = device.HasPowerMeasurement()
+	}
+}
+
+func BenchmarkDevice_GetDeviceID(b *testing.B) {
+	device := &Device{
+		Address: net.ParseIP("192.168.1.100"),
+		Port:    5540,
+		TXTRecord: map[string]string{
+			"D": "test-device-12345",
+		},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = device.GetDeviceID()
+	}
+}
+
+func BenchmarkScanner_GetDevices(b *testing.B) {
+	scanner := NewScanner("_matter._tcp", "local.")
+
+	// Populate scanner with devices
+	for i := 0; i < 100; i++ {
+		device := &Device{
+			Name:    "Device",
+			Address: net.ParseIP("192.168.1.100"),
+			Port:    5540,
+			TXTRecord: map[string]string{
+				"D": string(rune('A' + i)),
+			},
+		}
+		scanner.devices[device.GetDeviceID()] = device
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = scanner.GetDevices()
+	}
+}
+
+func BenchmarkScanner_GetPowerDevices(b *testing.B) {
+	scanner := NewScanner("_matter._tcp", "local.")
+
+	// Populate scanner with mix of power and non-power devices
+	for i := 0; i < 100; i++ {
+		clusters := "0006,0008,001D"
+		if i%3 == 0 {
+			// Every 3rd device has power measurement
+			clusters = "0006,0B04,001D"
+		}
+
+		device := &Device{
+			Name:    "Device",
+			Address: net.ParseIP("192.168.1.100"),
+			Port:    5540,
+			TXTRecord: map[string]string{
+				"D": string(rune('A' + i)),
+				"C": clusters,
+			},
+		}
+		scanner.devices[device.GetDeviceID()] = device
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = scanner.GetPowerDevices()
+	}
+}

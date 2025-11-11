@@ -43,6 +43,17 @@
 //  7. Close database connections
 //  8. Exit cleanly
 //
+// # Debug Signals
+//
+// The application handles debug signals for troubleshooting:
+//   - SIGUSR1: Dump current application state (devices, monitoring status, memory stats)
+//   - SIGUSR2: Dump all goroutine stack traces
+//
+// Usage:
+//
+//	kill -USR1 <pid>  # Dump application state
+//	kill -USR2 <pid>  # Dump goroutine stack traces
+//
 // # Configuration
 //
 // Configuration is loaded from config.yaml with environment variable overrides:
@@ -148,6 +159,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -310,6 +322,93 @@ func setupSignalHandler(server *http.Server, monitor *monitoring.PowerMonitor, c
 	}()
 }
 
+// setupDebugSignalHandlers sets up debug signal handlers (SIGUSR1, SIGUSR2)
+// SIGUSR1: Dump current application state (devices, monitoring stats)
+// SIGUSR2: Dump goroutine stack traces
+func setupDebugSignalHandlers(scanner *discovery.Scanner, monitor *monitoring.PowerMonitor) {
+	debugSigChan := make(chan os.Signal, 2) // Buffer for 2 signals
+	signal.Notify(debugSigChan, syscall.SIGUSR1, syscall.SIGUSR2)
+	go func() {
+		for sig := range debugSigChan {
+			switch sig {
+			case syscall.SIGUSR1:
+				dumpApplicationState(scanner, monitor)
+			case syscall.SIGUSR2:
+				dumpGoroutineStackTraces()
+			}
+		}
+	}()
+}
+
+// dumpApplicationState dumps current application state to logs
+// Triggered by SIGUSR1: kill -USR1 <pid>
+func dumpApplicationState(scanner *discovery.Scanner, monitor *monitoring.PowerMonitor) {
+	logger.Info().Msg("=== APPLICATION STATE DUMP (SIGUSR1) ===")
+
+	// Device discovery state
+	allDevices := scanner.GetDevices()
+	powerDevices := scanner.GetPowerDevices()
+	logger.Info().
+		Int("total_devices", len(allDevices)).
+		Int("power_devices", len(powerDevices)).
+		Msg("Device discovery state")
+
+	// List all discovered devices
+	for _, device := range allDevices {
+		logger.Info().
+			Str("device_id", device.GetDeviceID()).
+			Str("device_name", device.Name).
+			Str("address", device.Address.String()).
+			Int("port", device.Port).
+			Bool("has_power_measurement", device.HasPowerMeasurement()).
+			Msg("Discovered device")
+	}
+
+	// Monitoring state
+	monitoredCount := monitor.GetMonitoredDeviceCount()
+	logger.Info().
+		Int("monitored_devices", monitoredCount).
+		Msg("Monitoring state")
+
+	// List monitored devices
+	for _, device := range powerDevices {
+		deviceID := device.GetDeviceID()
+		isMonitoring := monitor.IsMonitoring(deviceID)
+		logger.Info().
+			Str("device_id", deviceID).
+			Str("device_name", device.Name).
+			Bool("is_monitoring", isMonitoring).
+			Msg("Power device monitoring status")
+	}
+
+	// Runtime statistics
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	logger.Info().
+		Uint64("alloc_mb", m.Alloc/1024/1024).
+		Uint64("total_alloc_mb", m.TotalAlloc/1024/1024).
+		Uint64("sys_mb", m.Sys/1024/1024).
+		Uint32("num_gc", m.NumGC).
+		Int("num_goroutines", runtime.NumGoroutine()).
+		Msg("Runtime statistics")
+
+	logger.Info().Msg("=== END STATE DUMP ===")
+}
+
+// dumpGoroutineStackTraces dumps all goroutine stack traces to logs
+// Triggered by SIGUSR2: kill -USR2 <pid>
+func dumpGoroutineStackTraces() {
+	logger.Info().Msg("=== GOROUTINE STACK TRACES (SIGUSR2) ===")
+	logger.Info().Int("num_goroutines", runtime.NumGoroutine()).Msg("Current goroutine count")
+
+	// Allocate buffer for stack traces (increase size if needed)
+	buf := make([]byte, 1024*1024) // 1MB buffer
+	stackLen := runtime.Stack(buf, true)
+	logger.Info().Str("stack_traces", string(buf[:stackLen])).Msg("Full stack trace")
+
+	logger.Info().Msg("=== END STACK TRACES ===")
+}
+
 // runMainLoop runs the main discovery loop
 func runMainLoop(ctx context.Context, scanner *discovery.Scanner, monitor *monitoring.PowerMonitor, notifier *notifications.SlackNotifier, discoveryInterval time.Duration, db *storage.CachingStorage, wg *sync.WaitGroup) {
 	discoveryTicker := time.NewTicker(discoveryInterval)
@@ -390,6 +489,9 @@ func main() {
 
 	// Handle shutdown signals
 	setupSignalHandler(server, monitor, cancel)
+
+	// Setup debug signal handlers (SIGUSR1, SIGUSR2)
+	setupDebugSignalHandlers(scanner, monitor)
 
 	// Start data writer goroutine
 	startDataWriter(ctx, db, monitor, &wg)
