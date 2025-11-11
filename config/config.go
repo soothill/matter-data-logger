@@ -49,60 +49,72 @@ func Load(path string) (*Config, error) {
 	}
 
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	err = yaml.Unmarshal(data, &cfg)
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	// Apply environment variable overrides (for secrets and runtime config)
-	if url := os.Getenv("INFLUXDB_URL"); url != "" {
-		cfg.InfluxDB.URL = url
-	}
-	if token := os.Getenv("INFLUXDB_TOKEN"); token != "" {
-		cfg.InfluxDB.Token = token
-	}
-	if org := os.Getenv("INFLUXDB_ORG"); org != "" {
-		cfg.InfluxDB.Organization = org
-	}
-	if bucket := os.Getenv("INFLUXDB_BUCKET"); bucket != "" {
-		cfg.InfluxDB.Bucket = bucket
-	}
-	if level := os.Getenv("LOG_LEVEL"); level != "" {
-		cfg.Logging.Level = level
-	}
-	if interval := os.Getenv("MATTER_DISCOVERY_INTERVAL"); interval != "" {
-		if duration, err := time.ParseDuration(interval); err == nil {
-			cfg.Matter.DiscoveryInterval = duration
-		}
-	}
-	if interval := os.Getenv("MATTER_POLL_INTERVAL"); interval != "" {
-		if duration, err := time.ParseDuration(interval); err == nil {
-			cfg.Matter.PollInterval = duration
-		}
-	}
-
-	// Set defaults
-	if cfg.Matter.DiscoveryInterval == 0 {
-		cfg.Matter.DiscoveryInterval = 5 * time.Minute
-	}
-	if cfg.Matter.PollInterval == 0 {
-		cfg.Matter.PollInterval = 30 * time.Second
-	}
-	if cfg.Matter.ServiceType == "" {
-		cfg.Matter.ServiceType = "_matter._tcp"
-	}
-	if cfg.Matter.Domain == "" {
-		cfg.Matter.Domain = "local."
-	}
-	if cfg.Logging.Level == "" {
-		cfg.Logging.Level = "info"
-	}
+	// Apply environment variable overrides and defaults
+	cfg.applyEnvironmentOverrides()
+	cfg.setDefaults()
 
 	// Validate configuration
-	if err := cfg.Validate(); err != nil {
+	err = cfg.Validate()
+	if err != nil {
 		return nil, fmt.Errorf("configuration validation failed: %w", err)
 	}
 
 	return &cfg, nil
+}
+
+// applyEnvironmentOverrides applies environment variable overrides to the configuration
+func (c *Config) applyEnvironmentOverrides() {
+	if url := os.Getenv("INFLUXDB_URL"); url != "" {
+		c.InfluxDB.URL = url
+	}
+	if token := os.Getenv("INFLUXDB_TOKEN"); token != "" {
+		c.InfluxDB.Token = token
+	}
+	if org := os.Getenv("INFLUXDB_ORG"); org != "" {
+		c.InfluxDB.Organization = org
+	}
+	if bucket := os.Getenv("INFLUXDB_BUCKET"); bucket != "" {
+		c.InfluxDB.Bucket = bucket
+	}
+	if level := os.Getenv("LOG_LEVEL"); level != "" {
+		c.Logging.Level = level
+	}
+	if interval := os.Getenv("MATTER_DISCOVERY_INTERVAL"); interval != "" {
+		duration, parseErr := time.ParseDuration(interval)
+		if parseErr == nil {
+			c.Matter.DiscoveryInterval = duration
+		}
+	}
+	if interval := os.Getenv("MATTER_POLL_INTERVAL"); interval != "" {
+		duration, parseErr := time.ParseDuration(interval)
+		if parseErr == nil {
+			c.Matter.PollInterval = duration
+		}
+	}
+}
+
+// setDefaults sets default values for configuration fields if not provided
+func (c *Config) setDefaults() {
+	if c.Matter.DiscoveryInterval == 0 {
+		c.Matter.DiscoveryInterval = 5 * time.Minute
+	}
+	if c.Matter.PollInterval == 0 {
+		c.Matter.PollInterval = 30 * time.Second
+	}
+	if c.Matter.ServiceType == "" {
+		c.Matter.ServiceType = "_matter._tcp"
+	}
+	if c.Matter.Domain == "" {
+		c.Matter.Domain = "local."
+	}
+	if c.Logging.Level == "" {
+		c.Logging.Level = "info"
+	}
 }
 
 // Validate checks if the configuration is valid

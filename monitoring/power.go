@@ -65,7 +65,7 @@ func (pm *PowerMonitor) StartMonitoringDevice(ctx context.Context, device *disco
 		return false
 	}
 
-	// Create a cancellable context for this device
+	// Create a cancelable context for this device
 	deviceCtx, cancel := context.WithCancel(ctx)
 	pm.monitoredDevices[deviceID] = cancel
 
