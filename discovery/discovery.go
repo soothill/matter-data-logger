@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/grandcat/zeroconf"
@@ -54,6 +55,7 @@ type Scanner struct {
 	serviceType string
 	domain      string
 	devices     map[string]*Device
+	mu          sync.RWMutex // Protects devices map
 }
 
 // NewScanner creates a new device scanner
@@ -73,15 +75,28 @@ func (s *Scanner) Discover(ctx context.Context, timeout time.Duration) ([]*Devic
 	}
 
 	entries := make(chan *zeroconf.ServiceEntry)
-	discoveredDevices := make([]*Device, 0)
+	var discoveredDevices []*Device
+	var mu sync.Mutex // Protects discoveredDevices slice
+	var wg sync.WaitGroup
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for entry := range entries {
 			device := s.parseServiceEntry(entry)
 			if device != nil {
 				deviceID := device.GetDeviceID()
+
+				// Thread-safe update of devices map
+				s.mu.Lock()
 				s.devices[deviceID] = device
+				s.mu.Unlock()
+
+				// Thread-safe append to discoveredDevices
+				mu.Lock()
 				discoveredDevices = append(discoveredDevices, device)
+				mu.Unlock()
+
 				logger.Info().
 					Str("device_id", deviceID).
 					Str("device_name", device.Name).
@@ -102,6 +117,7 @@ func (s *Scanner) Discover(ctx context.Context, timeout time.Duration) ([]*Devic
 	}
 
 	<-discoverCtx.Done()
+	wg.Wait() // Wait for goroutine to finish processing all entries
 
 	return discoveredDevices, nil
 }
@@ -144,6 +160,9 @@ func (s *Scanner) parseServiceEntry(entry *zeroconf.ServiceEntry) *Device {
 
 // GetDevices returns all discovered devices
 func (s *Scanner) GetDevices() []*Device {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	devices := make([]*Device, 0, len(s.devices))
 	for _, device := range s.devices {
 		devices = append(devices, device)
@@ -153,6 +172,9 @@ func (s *Scanner) GetDevices() []*Device {
 
 // GetPowerDevices returns only devices that support power measurement
 func (s *Scanner) GetPowerDevices() []*Device {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	powerDevices := make([]*Device, 0)
 	for _, device := range s.devices {
 		if device.HasPowerMeasurement() {
