@@ -1,8 +1,6 @@
 # Copyright (c) 2025 Darren Soothill
 # Licensed under the MIT License
 
-version: 2
-
 run:
   timeout: 5m
 
