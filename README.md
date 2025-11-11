@@ -18,6 +18,8 @@ A production-ready Go application that discovers Matter devices on your local ne
 - **Automatic Device Discovery**: Uses mDNS/DNS-SD to discover Matter devices on the local network
 - **Power Monitoring**: Identifies and monitors devices with electrical measurement capabilities
 - **InfluxDB Integration**: Stores time-series power consumption data in InfluxDB
+- **Local Caching with Automatic Replay**: When InfluxDB is unavailable, data is cached locally and automatically replayed when connection recovers
+- **Slack Notifications**: Optional alerts for discovery failures, InfluxDB connection issues, and cache warnings
 - **Configurable Intervals**: Customize discovery and polling frequencies
 - **Graceful Shutdown**: Properly handles shutdown signals and flushes pending data
 - **Production Ready**:
@@ -43,23 +45,38 @@ A production-ready Go application that discovers Matter devices on your local ne
          │
          │ Discovery
          ▼
-┌─────────────────┐
-│   Discovery     │
-│   Scanner       │
+┌─────────────────┐      Failures      ┌─────────────────┐
+│   Discovery     │ ────────────────▶ │     Slack       │
+│   Scanner       │                    │  Notifications  │
+└────────┬────────┘                    └─────────────────┘
+         │                                      ▲
+         │ Power Devices                        │
+         ▼                                      │
+┌─────────────────┐                             │
+│     Power       │                             │
+│    Monitor      │                             │
+└────────┬────────┘                             │
+         │                                      │
+         │ Readings                             │
+         ▼                                      │
+┌─────────────────┐                             │
+│    Caching      │                             │
+│    Storage      │ ───── Alerts ──────────────┘
+│  (with failover)│
 └────────┬────────┘
          │
-         │ Power Devices
-         ▼
-┌─────────────────┐
-│     Power       │
-│    Monitor      │
-└────────┬────────┘
-         │
-         │ Readings
+         │ Write / Replay
          ▼
 ┌─────────────────┐
 │   InfluxDB      │
 │    Storage      │
+└────────┬────────┘
+         │
+         │ Fallback
+         ▼
+┌─────────────────┐
+│  Local Cache    │
+│ (JSON files)    │
 └─────────────────┘
 ```
 
@@ -147,6 +164,19 @@ matter:
 
 logging:
   level: "info"  # debug, info, warn, error
+
+notifications:
+  # Slack webhook URL for alerts (optional)
+  # Get webhook URL from: https://api.slack.com/messaging/webhooks
+  slack_webhook_url: ""
+
+cache:
+  # Local cache directory for storing data when InfluxDB is unavailable
+  directory: "/var/cache/matter-data-logger"
+  # Maximum cache size in bytes (100MB default)
+  max_size: 104857600
+  # Maximum age of cached items before cleanup (24h default)
+  max_age: 24h
 ```
 
 **Environment Variables** (recommended for production):
@@ -163,6 +193,8 @@ export INFLUXDB_TOKEN="your-token-here"
 export INFLUXDB_ORG="my-org"
 export INFLUXDB_BUCKET="matter-power"
 export LOG_LEVEL="info"
+export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+export CACHE_DIRECTORY="/var/cache/matter-data-logger"
 ```
 
 Environment variables override config file values, making it safer for production deployments.
@@ -331,6 +363,64 @@ avg(matter_current_power_watts)
 matter_current_power_watts{device_name="Smart Plug 1"}
 ```
 
+## Reliability Features
+
+### Local Caching with Automatic Replay
+
+The application includes a robust caching layer that prevents data loss when InfluxDB is temporarily unavailable:
+
+**How it works:**
+1. When InfluxDB write fails, the reading is automatically cached to a local JSON file
+2. A background monitor checks InfluxDB health every 30 seconds
+3. When InfluxDB recovers, cached data is automatically replayed
+4. Cache size and age limits prevent unbounded growth
+
+**Configuration:**
+```yaml
+cache:
+  directory: "/var/cache/matter-data-logger"  # Cache storage location
+  max_size: 104857600                         # 100MB maximum cache size
+  max_age: 24h                                # Delete entries older than 24h
+```
+
+**Cache behavior:**
+- Readings are cached as individual JSON files with timestamps
+- Oldest entries are deleted when cache is full
+- Entries older than `max_age` are cleaned up automatically
+- Cache is flushed after successful replay to InfluxDB
+- Thread-safe for concurrent access
+
+### Slack Notifications
+
+Get real-time alerts for critical events via Slack webhooks:
+
+**Supported alerts:**
+- **InfluxDB Connection Failure**: Notified when InfluxDB becomes unavailable (data will be cached)
+- **InfluxDB Connection Recovery**: Notified when InfluxDB connection is restored (cached data will be replayed)
+- **Discovery Failures**: Notified when Matter device discovery fails
+- **Cache Warnings**: Notified when local cache usage exceeds thresholds
+
+**Setup:**
+1. Create a Slack webhook at https://api.slack.com/messaging/webhooks
+2. Add webhook URL to config:
+```yaml
+notifications:
+  slack_webhook_url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+```
+
+Or use environment variable:
+```bash
+export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+```
+
+**Alert examples:**
+- 🔴 "InfluxDB Connection Failure: Failed to connect to InfluxDB: connection refused. Data will be cached locally until connection is restored."
+- ✅ "InfluxDB Connection Restored: Connection to InfluxDB has been restored. Cached data will be replayed."
+- ⚠️ "Device Discovery Failure: Failed to discover Matter devices: timeout"
+- ⚠️ "Local Cache Usage High: Cache size: 95MB (95% of max 100MB)"
+
+Leave `slack_webhook_url` empty to disable notifications.
+
 ## Querying Data
 
 ### Using Flux
@@ -396,10 +486,15 @@ matter-data-logger/
 │   ├── power.go              # Power consumption monitoring
 │   └── power_test.go         # Monitoring tests
 ├── storage/
-│   └── influxdb.go           # InfluxDB client and storage
+│   ├── influxdb.go           # InfluxDB client and storage
+│   ├── cache.go              # Local caching with automatic replay
+│   └── cache_test.go         # Cache tests
 ├── pkg/
 │   ├── logger/               # Structured logging
-│   └── metrics/              # Prometheus metrics
+│   ├── metrics/              # Prometheus metrics
+│   └── notifications/        # Slack notifications
+│       ├── slack.go          # Slack webhook integration
+│       └── slack_test.go     # Notification tests
 ├── .github/
 │   └── workflows/            # GitHub Actions CI/CD
 │       ├── ci.yml            # Continuous integration
@@ -523,6 +618,27 @@ Matter devices advertise themselves via mDNS with service type `_matter._tcp`. T
 2. Verify authentication token is valid
 3. Ensure bucket exists: `influx bucket list --org my-org`
 4. Check network connectivity
+5. Data will be cached locally - check logs for cache location
+
+### Cache Full or Growing
+
+1. Check cache directory size: `du -sh /var/cache/matter-data-logger`
+2. Verify InfluxDB connectivity (cache grows when InfluxDB is unavailable)
+3. Increase `max_size` in config if needed
+4. Reduce `max_age` to clean up older entries faster
+5. Manually clear cache: `rm -rf /var/cache/matter-data-logger/*`
+
+### Slack Notifications Not Working
+
+1. Verify webhook URL is correct
+2. Test webhook manually:
+   ```bash
+   curl -X POST -H 'Content-type: application/json' \
+     --data '{"text":"Test message"}' \
+     YOUR_WEBHOOK_URL
+   ```
+3. Check application logs for notification errors
+4. Ensure network allows outbound HTTPS to Slack
 
 ### High Memory Usage
 
