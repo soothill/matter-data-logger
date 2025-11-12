@@ -343,6 +343,7 @@ type CachingStorage struct {
 	storage             interfaces.TimeSeriesStorage
 	cache               *LocalCache
 	notifier            Notifier
+	cb                  *CircuitBreaker
 	ctx                 context.Context
 	cancel              context.CancelFunc
 	replayWg            sync.WaitGroup
@@ -359,8 +360,18 @@ type Notifier interface {
 	IsEnabled() bool
 }
 
+// CachingStorageOption defines a functional option for configuring CachingStorage.
+type CachingStorageOption func(*CachingStorage)
+
+// WithHealthCheckInterval sets a custom health check interval.
+func WithHealthCheckInterval(interval time.Duration) CachingStorageOption {
+	return func(cs *CachingStorage) {
+		cs.healthCheckInterval = interval
+	}
+}
+
 // NewCachingStorage creates a new caching storage wrapper
-func NewCachingStorage(storage interfaces.TimeSeriesStorage, cache *LocalCache, notifier Notifier) *CachingStorage {
+func NewCachingStorage(storage interfaces.TimeSeriesStorage, cache *LocalCache, notifier Notifier, opts ...CachingStorageOption) *CachingStorage {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	cs := &CachingStorage{
@@ -371,6 +382,10 @@ func NewCachingStorage(storage interfaces.TimeSeriesStorage, cache *LocalCache, 
 		cancel:              cancel,
 		cacheEnabled:        false,
 		healthCheckInterval: healthCheckInterval,
+	}
+
+	for _, opt := range opts {
+		opt(cs)
 	}
 
 	// Start background health monitoring and replay goroutine
@@ -384,7 +399,9 @@ func NewCachingStorage(storage interfaces.TimeSeriesStorage, cache *LocalCache, 
 // The context can be used for cancellation and timeout control
 func (cs *CachingStorage) WriteReading(ctx context.Context, reading *interfaces.PowerReading) error {
 	// Try to write to InfluxDB first
-	err := cs.storage.WriteReading(ctx, reading)
+	err := cs.cb.Execute(ctx, func(ctx context.Context) error {
+		return cs.storage.WriteReading(ctx, reading)
+	})
 	if err == nil {
 		return nil
 	}

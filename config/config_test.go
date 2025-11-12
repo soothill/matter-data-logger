@@ -311,20 +311,22 @@ func TestLoad_ValidFile(t *testing.T) {
 	}
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 
-	content := []byte(`influxdb:
-  url: "http://localhost:8086"
-  token: "test-token"
-  organization: "test-org"
-  bucket: "test-bucket"
-matter:
-  discovery_interval: 5m
-  poll_interval: 30s
-logging:
-  level: "info"
-cache:
-  directory: "/tmp/cache"
-  max_size: 104857600
-  max_age: 24h
+	content := []byte(`
+default:
+  influxdb:
+    url: "http://localhost:8086"
+    token: "test-token"
+    organization: "test-org"
+    bucket: "test-bucket"
+  matter:
+    discovery_interval: 5m
+    poll_interval: 30s
+  logging:
+    level: "info"
+  cache:
+    directory: "/tmp/cache"
+    max_size: 104857600
+    max_age: 24h
 `)
 	if _, writeErr := tmpfile.Write(content); writeErr != nil {
 		t.Fatal(writeErr)
@@ -357,20 +359,22 @@ func TestLoad_EnvironmentOverrides(t *testing.T) {
 	}
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 
-	content := []byte(`influxdb:
-  url: "http://localhost:8086"
-  token: "file-token"
-  organization: "file-org"
-  bucket: "file-bucket"
-matter:
-  discovery_interval: 5m
-  poll_interval: 30s
-logging:
-  level: "info"
-cache:
-  directory: "/tmp/cache_file"
-  max_size: 104857600
-  max_age: 24h
+	content := []byte(`
+default:
+  influxdb:
+    url: "http://localhost:8086"
+    token: "file-token"
+    organization: "file-org"
+    bucket: "file-bucket"
+  matter:
+    discovery_interval: 5m
+    poll_interval: 30s
+  logging:
+    level: "info"
+  cache:
+    directory: "/tmp/cache_file"
+    max_size: 104857600
+    max_age: 24h
 `)
 	if _, writeErr := tmpfile.Write(content); writeErr != nil {
 		t.Fatal(writeErr)
@@ -437,11 +441,13 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 
-	content := []byte(`influxdb:
-  url: "http://localhost:8086"
-  token: "test-token-default"
-  organization: "test-org-default"
-  bucket: "test-bucket-default"
+	content := []byte(`
+default:
+  influxdb:
+    url: "http://localhost:8086"
+    token: "test-token-default"
+    organization: "test-org-default"
+    bucket: "test-bucket-default"
 `)
 	if _, writeErr := tmpfile.Write(content); writeErr != nil {
 		t.Fatal(writeErr)

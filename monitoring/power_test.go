@@ -11,12 +11,12 @@ import (
 
 	"github.com/soothill/matter-data-logger/discovery"
 	"github.com/soothill/matter-data-logger/monitoring"
-	"github.com/stretchr/testify/assert"
+	"github.com/soothill/matter-data-logger/pkg/interfaces"
 )
 
 type mockErrorScanner struct{}
 
-func (s *mockErrorScanner) GetDeviceByID(deviceID string) *discovery.Device {
+func (s *mockErrorScanner) GetDeviceByID(_ string) *discovery.Device {
 	return &discovery.Device{
 		Name: "Test Device",
 	}
@@ -24,7 +24,7 @@ func (s *mockErrorScanner) GetDeviceByID(deviceID string) *discovery.Device {
 
 type mockErrorMatterClient struct{}
 
-func (c *mockErrorMatterClient) ReadPower() (*interfaces.PowerReading, error) {
+func (c *mockErrorMatterClient) ReadPower(_ context.Context, _ *discovery.Device) (*interfaces.PowerReading, error) {
 	return nil, errors.New("test error")
 }
 

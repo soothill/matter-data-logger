@@ -10,15 +10,14 @@ import (
 )
 
 func FuzzGetDeviceID(f *testing.F) {
-	f.Add("device-name", "instance-name")
-	f.Fuzz(func(t *testing.T, name, instance string) {
+	f.Add("device-name")
+	f.Fuzz(func(t *testing.T, name string) {
 		device := &discovery.Device{
-			Name:         name,
-			InstanceName: instance,
+			Name: name,
 		}
 		deviceID := device.GetDeviceID()
 		if deviceID == "" {
-			t.Errorf("GetDeviceID returned an empty string for name %q and instance %q", name, instance)
+			t.Errorf("GetDeviceID returned an empty string for name %q", name)
 		}
 	})
 }

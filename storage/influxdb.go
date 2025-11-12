@@ -32,6 +32,7 @@ import (
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/sony/gobreaker"
+	"github.com/soothill/matter-data-logger/pkg/errors"
 	"github.com/soothill/matter-data-logger/pkg/interfaces"
 	"github.com/soothill/matter-data-logger/pkg/logger"
 )
@@ -490,7 +491,7 @@ func (s *InfluxDBStorage) QueryLatestReading(ctx context.Context, deviceID strin
 	}
 
 	if result.Err() != nil {
-		return nil, fmt.Errorf("query parsing failed: %w", result.Err())
+		return nil, &errors.StorageError{Op: "query parse", Err: result.Err()}
 	}
 
 	return reading, nil

@@ -650,240 +650,47 @@ Matter devices advertise themselves via mDNS with service type `_matter._tcp`. T
 
 ## Troubleshooting
 
-### No Devices Found
+This section covers common issues and how to resolve them.
 
-#### Basic Checks
-1. Ensure Matter devices are commissioned and on the same network
-2. Verify devices are advertising `_matter._tcp` service
-3. Confirm devices are powered on and connected to WiFi/Thread
+### Device Discovery Issues
 
-#### Firewall Configuration
-mDNS requires specific ports to be open:
+If you're having trouble discovering Matter devices, follow these steps:
 
-```bash
-# Linux (ufw)
-sudo ufw allow 5353/udp  # mDNS
-sudo ufw allow 5540/tcp  # Matter (default port)
+1.  **Check Network Connectivity**: Ensure that the Matter devices and the machine running the logger are on the same local network.
+2.  **Firewall Rules**: mDNS, the protocol used for discovery, requires UDP port 5353 to be open. Make sure your firewall is not blocking this port.
+    -   **Linux (ufw)**: `sudo ufw allow 5353/udp`
+    -   **Linux (firewalld)**: `sudo firewall-cmd --add-service=mdns --permanent && sudo firewall-cmd --reload`
+3.  **mDNS Service**: Verify that an mDNS service (like Avahi on Linux) is running.
+    -   `systemctl status avahi-daemon`
+4.  **Permissions**: The application needs permission to bind to the mDNS port. If you see "permission denied" errors, you may need to run the application with elevated privileges or grant it the necessary capabilities:
+    -   `sudo setcap cap_net_raw+ep /path/to/your/binary`
+5.  **Docker Configuration**: If you are running the logger in a Docker container, you must use `--network=host` for mDNS to work correctly.
 
-# Linux (firewalld)
-sudo firewall-cmd --permanent --add-service=mdns
-sudo firewall-cmd --permanent --add-port=5540/tcp
-sudo firewall-cmd --reload
+### InfluxDB Connection Problems
 
-# Check if ports are blocked
-sudo netstat -tulpn | grep 5353
-```
+If the logger fails to connect to InfluxDB:
 
-#### Verify mDNS Service
+1.  **Verify InfluxDB Status**: Ensure that your InfluxDB instance is running and accessible from the logger machine.
+    -   `curl -sL -I http://your-influxdb-host:8086/ping`
+2.  **Check Configuration**: Double-check the InfluxDB URL, token, organization, and bucket in your `config.yaml` or environment variables.
+3.  **Authentication**: Make sure the token has the correct permissions to write to the specified bucket.
 
-```bash
-# Check if mDNS/avahi is running
-systemctl status avahi-daemon  # Linux
-systemctl status systemd-resolved  # Alternative on some systems
+### Data Not Appearing in InfluxDB
 
-# Manually scan for devices
-avahi-browse -a -r          # Browse all services
-avahi-browse -r _matter._tcp  # Browse only Matter devices
-dns-sd -B _matter._tcp      # macOS alternative
+If you see devices being discovered but no data is being written to InfluxDB:
 
-# Check mDNS responses
-sudo tcpdump -i any port 5353  # Monitor mDNS traffic
-```
-
-#### Docker-Specific Issues
-
-If running in Docker, mDNS discovery requires `--network=host`:
-
-```bash
-# Incorrect (won't discover devices)
-docker run -p 9090:9090 matter-data-logger
-
-# Correct (allows mDNS)
-docker run --network=host matter-data-logger
-```
-
-#### Permission Issues
-
-```bash
-# Grant mDNS capabilities (Linux)
-sudo setcap cap_net_raw+ep /path/to/matter-data-logger
-
-# Or run as root (not recommended for production)
-sudo ./matter-data-logger
-```
+1.  **Check Logs**: Enable debug logging (`log_level: debug` in `config.yaml`) to see detailed information about power readings and InfluxDB writes.
+2.  **Device Capabilities**: The logger will only monitor devices that have power measurement capabilities. Check the logs to see if your devices are being identified correctly.
+3.  **Cache Status**: If InfluxDB is unavailable, data is cached locally. Check the cache directory for pending data.
 
 ### Configuration Errors
 
-#### Validate Configuration
+If the application fails to start due to configuration issues:
 
-Use the built-in validation before starting:
-
-```bash
-# Validate configuration file
-./matter-data-logger --validate-config
-
-# Validate custom config
-./matter-data-logger --validate-config --config /path/to/config.yaml
-```
-
-#### Common Configuration Issues
-
-1. **Invalid YAML syntax**
-   ```
-   Error: yaml: line 5: could not find expected ':'
-   ```
-   - Check for proper indentation (use spaces, not tabs)
-   - Verify colons are followed by spaces
-   - Use online YAML validator if needed
-
-2. **Missing Required Fields**
-   ```
-   Error: influxdb.url is required
-   ```
-   - Ensure all required fields are present:
-     - `influxdb.url`
-     - `influxdb.token`
-     - `influxdb.organization`
-     - `influxdb.bucket`
-
-3. **Invalid Time Durations**
-   ```
-   Error: discovery_interval must be >= poll_interval
-   ```
-   - Use valid Go duration format: `30s`, `5m`, `1h`
-   - Ensure discovery_interval ≥ poll_interval
-   - Example: discovery_interval: `5m`, poll_interval: `30s`
-
-4. **Environment Variable Override Issues**
-   ```bash
-   # Check if environment variables are set correctly
-   env | grep INFLUX
-   env | grep MATTER
-
-   # Test with explicit variables
-   INFLUXDB_URL=http://localhost:8086 ./matter-data-logger --validate-config
-   ```
-
-5. **Token/URL Format Issues**
-   - InfluxDB token should be alphanumeric string (no quotes in YAML)
-   - URL must include protocol: `http://` or `https://`
-   - Don't include trailing slashes in URLs
-
-### InfluxDB Connection Failed
-
-1. Check InfluxDB is running: `curl http://localhost:8086/health`
-2. Verify authentication token is valid
-3. Ensure bucket exists: `influx bucket list --org my-org`
-4. Check network connectivity
-5. Data will be cached locally - check logs for cache location
-
-### Cache Full or Growing
-
-1. Check cache directory size: `du -sh /var/cache/matter-data-logger`
-2. Verify InfluxDB connectivity (cache grows when InfluxDB is unavailable)
-3. Increase `max_size` in config if needed
-4. Reduce `max_age` to clean up older entries faster
-5. Manually clear cache: `rm -rf /var/cache/matter-data-logger/*`
-
-### Slack Notifications Not Working
-
-1. Verify webhook URL is correct
-2. Test webhook manually:
-   ```bash
-   curl -X POST -H 'Content-type: application/json' \
-     --data '{"text":"Test message"}' \
-     YOUR_WEBHOOK_URL
-   ```
-3. Check application logs for notification errors
-4. Ensure network allows outbound HTTPS to Slack
-
-### High Memory Usage
-
-1. Reduce polling interval in config
-2. Limit number of monitored devices
-3. Increase InfluxDB batch write size
-
-### Debugging Device Discovery
-
-#### Enable Debug Logging
-
-```bash
-# Set debug log level in config.yaml
-logging:
-  level: debug
-
-# Or via environment variable
-LOG_LEVEL=debug ./matter-data-logger
-```
-
-#### Monitor Discovery Process
-
-```bash
-# Watch application logs for discovery events
-./matter-data-logger 2>&1 | grep -i discover
-
-# Check discovered device count
-curl -s localhost:9090/metrics | grep matter_devices_discovered
-
-# Check power device count
-curl -s localhost:9090/metrics | grep matter_power_devices
-
-# Monitor devices being actively polled
-curl -s localhost:9090/metrics | grep matter_devices_monitored
-```
-
-#### Verify Device Capabilities
-
-Check if discovered devices have power measurement capability:
-
-```bash
-# Look for cluster information in logs
-./matter-data-logger 2>&1 | grep -i "has_power_measurement"
-
-# Expected output for power device:
-# has_power_measurement=true
-
-# Devices must advertise cluster 0x0B04 or 0x0091 in TXT records
-```
-
-#### Network Isolation Issues
-
-```bash
-# Check if devices are on same network/VLAN
-ip addr show                    # Your host IP
-arp -a | grep <device-ip>      # Device MAC/IP
-
-# Test multicast connectivity
-ping -c 3 224.0.0.251          # mDNS multicast address
-
-# Verify routing table
-ip route show
-```
-
-#### Discovery Timeout Issues
-
-If discovery consistently times out or finds no devices:
-
-1. Increase discovery timeout in config:
-   ```yaml
-   matter:
-     discovery_interval: 10m  # Longer interval
-   ```
-
-2. Check network latency:
-   ```bash
-   ping -c 10 <device-ip>
-   mtr <device-ip>  # Monitor route
-   ```
-
-3. Disable WiFi power saving:
-   ```bash
-   # Linux
-   sudo iw dev wlan0 set power_save off
-
-   # Check current setting
-   iw dev wlan0 get power_save
-   ```
+1.  **Validate Configuration**: Use the `--validate-config` flag to check your configuration file for errors before starting the application.
+    -   `./matter-data-logger --validate-config`
+2.  **YAML Syntax**: Ensure your `config.yaml` has valid YAML syntax. Use an online validator if you are unsure.
+3.  **Environment Variables**: If you are using environment variables, make sure they are correctly set and exported. Remember that environment variables override values in the configuration file.
 
 ## Contributing
 

@@ -76,14 +76,6 @@ import (
 	"github.com/soothill/matter-data-logger/pkg/metrics"
 )
 
-const (
-	simulatedBaseLoadMin = 10.0  // Minimum base load in watts
-	simulatedLoadRange   = 90.0  // Load range (10-100W)
-	simulatedVariation   = 10.0  // Power variation range (±5W)
-	simulatedBaseVoltage = 120.0 // Base voltage in volts
-	simulatedVoltageVar  = 2.0   // Voltage variation range (±1V, making 119-121V)
-)
-
 // DeviceScanner defines the interface for retrieving device information
 type DeviceScanner interface {
 	GetDeviceByID(deviceID string) *discovery.Device

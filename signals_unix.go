@@ -9,8 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-
-	"github.com/soothill/matter-data-logger/app"
 )
 
 // setupDebugSignalHandlers sets up debug signal handlers (SIGUSR1, SIGUSR2)
@@ -21,7 +19,7 @@ import (
 //
 //	kill -USR1 <pid>  # Dump application state
 //	kill -USR2 <pid>  # Dump goroutine stack traces
-func setupDebugSignalHandlers(application *app.App) {
+func setupDebugSignalHandlers(application *App) {
 	debugSigChan := make(chan os.Signal, 2) // Buffer for 2 signals
 	signal.Notify(debugSigChan, syscall.SIGUSR1, syscall.SIGUSR2)
 	go func() {
@@ -30,7 +28,7 @@ func setupDebugSignalHandlers(application *app.App) {
 			case syscall.SIGUSR1:
 				application.DumpApplicationState()
 			case syscall.SIGUSR2:
-				app.DumpGoroutineStackTraces()
+				DumpGoroutineStackTraces()
 			}
 		}
 	}()

@@ -15,7 +15,7 @@ import (
 
 type mockScanner struct{}
 
-func (s *mockScanner) GetDeviceByID(deviceID string) *discovery.Device {
+func (s *mockScanner) GetDeviceByID(_ string) *discovery.Device {
 	return &discovery.Device{
 		Name: "Test Device",
 	}

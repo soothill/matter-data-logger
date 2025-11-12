@@ -390,7 +390,8 @@ func TestCachingStorage_WriteReading_Success(t *testing.T) {
 	// Mock notifier
 	mockNotif := newMockNotifier()
 
-	cs := NewCachingStorage(mockDB, cache, mockNotif)
+	cs := NewCachingStorage(mockDB, cache, mockNotif, WithHealthCheckInterval(100*time.Millisecond))
+	cs.cb = NewCircuitBreaker(5, 30*time.Second, 1)
 	defer cs.Close()
 
 	reading := &interfaces.PowerReading{
@@ -441,10 +442,10 @@ func TestCachingStorage_WriteReading_CacheFallback(t *testing.T) {
 	}
 
 	// Mock notifier
-	mockNotif := &mockNotifier{}
+	mockNotif := newMockNotifier()
 
-	cs := NewCachingStorage(mockDB, cache, mockNotif)
-	cs.healthCheckInterval = 100 * time.Millisecond // Speed up test
+	cs := NewCachingStorage(mockDB, cache, mockNotif, WithHealthCheckInterval(100*time.Millisecond))
+	cs.cb = NewCircuitBreaker(5, 30*time.Second, 1)
 	defer cs.Close()
 
 	reading := &interfaces.PowerReading{
@@ -581,6 +582,7 @@ func TestCachingStorage_WriteReading_CacheFull(t *testing.T) {
 	mockNotif := newMockNotifier()
 
 	cs := NewCachingStorage(mockDB, cache, mockNotif)
+	cs.cb = NewCircuitBreaker(5, 30*time.Second, 1)
 	defer cs.Close()
 
 	reading := &interfaces.PowerReading{
@@ -630,6 +632,7 @@ func TestCachingStorage_CacheWarning(t *testing.T) {
 	mockNotif := newMockNotifier()
 
 	cs := NewCachingStorage(mockDB, cache, mockNotif)
+	cs.cb = NewCircuitBreaker(5, 30*time.Second, 1)
 	defer cs.Close()
 
 	reading := &interfaces.PowerReading{
@@ -770,6 +773,7 @@ func TestCachingStorage_WriteBatch(t *testing.T) {
 	}
 
 	cs := NewCachingStorage(mockDB, cache, newMockNotifier())
+	cs.cb = NewCircuitBreaker(5, 30*time.Second, 1)
 	defer cs.Close()
 
 	readings := []*interfaces.PowerReading{
@@ -826,6 +830,7 @@ func TestCachingStorage_WriteBatch_Fallback(t *testing.T) {
 	mockNotif := newMockNotifier()
 
 	cs := NewCachingStorage(mockDB, cache, mockNotif)
+	cs.cb = NewCircuitBreaker(5, 30*time.Second, 1)
 	defer cs.Close()
 
 	readings := []*interfaces.PowerReading{

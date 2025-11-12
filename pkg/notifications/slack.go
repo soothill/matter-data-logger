@@ -145,6 +145,12 @@ func (s *SlackNotifier) IsEnabled() bool {
 	return s.enabled
 }
 
+// UpdateWebhookURL updates the webhook URL for the notifier.
+func (s *SlackNotifier) UpdateWebhookURL(webhookURL string) {
+	s.webhookURL = webhookURL
+	s.enabled = webhookURL != ""
+}
+
 // SendMessage sends a simple text message to Slack
 func (s *SlackNotifier) SendMessage(ctx context.Context, message string) error {
 	if !s.enabled {

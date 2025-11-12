@@ -59,11 +59,27 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	InfluxDB      InfluxDBConfig      `yaml:"influxdb" validate:"required"`
-	Matter        MatterConfig        `yaml:"matter" validate:"required"`
-	Logging       LoggingConfig       `yaml:"logging" validate:"required"`
-	Notifications NotificationsConfig `yaml:"notifications"`
-	Cache         CacheConfig         `yaml:"cache" validate:"required"`
+	InfluxDB       InfluxDBConfig       `yaml:"influxdb" validate:"required"`
+	Matter         MatterConfig         `yaml:"matter" validate:"required"`
+	Logging        LoggingConfig        `yaml:"logging" validate:"required"`
+	Notifications  NotificationsConfig  `yaml:"notifications"`
+	Cache          CacheConfig          `yaml:"cache" validate:"required"`
+	Observability  ObservabilityConfig  `yaml:"observability"`
+	ResourceLimits ResourceLimitsConfig `yaml:"resource_limits"`
+}
+
+// ResourceLimitsConfig holds resource limit settings
+type ResourceLimitsConfig struct {
+	MaxDevices int `yaml:"max_devices" validate:"omitempty,min=1"`
+	BufferSize int `yaml:"buffer_size" validate:"omitempty,min=1"`
+	BatchSize  int `yaml:"batch_size" validate:"omitempty,min=1"`
+}
+
+// ObservabilityConfig holds observability settings
+type ObservabilityConfig struct {
+	MetricsInterval time.Duration `yaml:"metrics_interval" validate:"omitempty,min=1s"`
+	LogFormat       string        `yaml:"log_format" validate:"omitempty,oneof=json console"`
+	EnableTracing   bool          `yaml:"enable_tracing"`
 }
 
 // InfluxDBConfig holds InfluxDB connection settings
@@ -109,15 +125,25 @@ func init() {
 
 // Load reads configuration from a YAML file and applies environment variable overrides
 func Load(path string) (*Config, error) {
+	profile := os.Getenv("CONFIG_PROFILE")
+	if profile == "" {
+		profile = "default"
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	var cfg Config
-	err = yaml.Unmarshal(data, &cfg)
+	var allConfigs map[string]Config
+	err = yaml.Unmarshal(data, &allConfigs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	cfg, ok := allConfigs[profile]
+	if !ok {
+		return nil, fmt.Errorf("profile '%s' not found in configuration file", profile)
 	}
 
 	// Apply environment variable overrides and defaults

@@ -56,56 +56,56 @@ var (
 	// DevicesDiscovered tracks the total number of Matter devices discovered
 	DevicesDiscovered = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "matter_devices_discovered_total",
-		Help: "Total number of Matter devices discovered via mDNS (count, includes all device types)",
+		Help: "Total number of Matter devices discovered via mDNS. Unit: count. Example: 10.",
 	})
 
 	// PowerDevicesDiscovered tracks the number of devices with power measurement capability
 	PowerDevicesDiscovered = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "matter_power_devices_discovered_total",
-		Help: "Total number of Matter devices with Electrical Measurement (0x0B04) or Power Measurement (0x0091) clusters (count)",
+		Help: "Total number of Matter devices with power measurement capabilities. Unit: count. Example: 3.",
 	})
 
 	// DevicesMonitored tracks the number of devices currently being monitored
 	DevicesMonitored = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "matter_devices_monitored",
-		Help: "Number of devices currently being actively monitored for power consumption (count, actively polling)",
+		Help: "Number of devices currently being actively monitored. Unit: count. Example: 3.",
 	})
 
 	// PowerReadingsTotal tracks the total number of power readings collected
 	PowerReadingsTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "matter_power_readings_total",
-		Help: "Total number of power readings successfully collected from devices (count, monotonically increasing)",
+		Help: "Total number of power readings successfully collected. Unit: count. Example: 12345.",
 	})
 
 	// PowerReadingErrors tracks the number of failed power readings
 	PowerReadingErrors = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "matter_power_reading_errors_total",
-		Help: "Total number of failed power reading attempts (count, includes timeouts and device errors)",
+		Help: "Total number of failed power reading attempts. Unit: count. Example: 10.",
 	})
 
 	// InfluxDBWritesTotal tracks the total number of writes to InfluxDB
 	InfluxDBWritesTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "matter_influxdb_writes_total",
-		Help: "Total number of successful writes to InfluxDB (count, excludes cached writes during outages)",
+		Help: "Total number of successful writes to InfluxDB. Unit: count. Example: 12345.",
 	})
 
 	// InfluxDBWriteErrors tracks the number of failed writes to InfluxDB
 	InfluxDBWriteErrors = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "matter_influxdb_write_errors_total",
-		Help: "Total number of failed InfluxDB write attempts (count, triggers local cache fallback)",
+		Help: "Total number of failed InfluxDB write attempts. Unit: count. Example: 5.",
 	})
 
 	// DiscoveryDuration tracks how long device discovery takes
 	DiscoveryDuration = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name:    "matter_discovery_duration_seconds",
-		Help:    "Duration of mDNS device discovery operation in seconds (histogram with buckets: 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10)",
+		Help:    "Duration of mDNS device discovery operations. Unit: seconds. Example: 0.5.",
 		Buckets: prometheus.DefBuckets,
 	})
 
 	// PowerReadingDuration tracks how long it takes to read power from a device
 	PowerReadingDuration = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name:    "matter_power_reading_duration_seconds",
-		Help:    "Duration of single device power reading operation in seconds (histogram, typical range: 0.001-0.1s)",
+		Help:    "Duration of single device power reading operations. Unit: seconds. Example: 0.05.",
 		Buckets: prometheus.DefBuckets,
 	})
 
