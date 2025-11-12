@@ -118,28 +118,28 @@ func NewScanner(serviceType, domain string) *Scanner {
 // This function uses a producer-consumer pattern with goroutines and channels:
 //
 // 1. Producer: zeroconf.Resolver.Browse() (external library)
-//    - Scans network for mDNS/DNS-SD advertisements
-//    - Sends ServiceEntry records to the 'entries' channel
-//    - Runs until context timeout expires
+//   - Scans network for mDNS/DNS-SD advertisements
+//   - Sends ServiceEntry records to the 'entries' channel
+//   - Runs until context timeout expires
 //
 // 2. Consumer: Local goroutine (lines 128-154)
-//    - Receives ServiceEntry records from the 'entries' channel
-//    - Parses each entry into a Device struct
-//    - Updates two data structures concurrently
+//   - Receives ServiceEntry records from the 'entries' channel
+//   - Parses each entry into a Device struct
+//   - Updates two data structures concurrently
 //
 // # Synchronization Strategy
 //
 // Two separate mutexes protect two different data structures:
 //
 // 1. s.mu (RWMutex): Protects s.devices map (Scanner-wide state)
-//    - This map persists across multiple Discover() calls
-//    - Allows safe concurrent reads (GetDevices, GetPowerDevices)
-//    - Write-locked only during device insertion
+//   - This map persists across multiple Discover() calls
+//   - Allows safe concurrent reads (GetDevices, GetPowerDevices)
+//   - Write-locked only during device insertion
 //
 // 2. mu (Mutex): Protects discoveredDevices slice (function-local state)
-//    - This slice only tracks newly discovered devices in this scan
-//    - Returned to caller after scan completes
-//    - Simpler mutex since no concurrent reads needed
+//   - This slice only tracks newly discovered devices in this scan
+//   - Returned to caller after scan completes
+//   - Simpler mutex since no concurrent reads needed
 //
 // # Data Flow
 //

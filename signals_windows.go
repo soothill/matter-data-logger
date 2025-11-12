@@ -6,8 +6,7 @@
 package main
 
 import (
-	"github.com/soothill/matter-data-logger/discovery"
-	"github.com/soothill/matter-data-logger/monitoring"
+	"github.com/soothill/matter-data-logger/app"
 	"github.com/soothill/matter-data-logger/pkg/logger"
 )
 
@@ -16,7 +15,7 @@ import (
 // - HTTP endpoints (if implemented)
 // - Log file analysis
 // - Windows Performance Monitor
-func setupDebugSignalHandlers(scanner *discovery.Scanner, monitor *monitoring.PowerMonitor) {
+func setupDebugSignalHandlers(_ *app.App) {
 	// No-op on Windows - SIGUSR1 and SIGUSR2 don't exist
 	// Debug signal handlers are only available on Unix-like systems
 	logger.Debug().Msg("Debug signal handlers not available on Windows")

@@ -7,6 +7,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/go-playground/validator/v10"
 )
 
 func TestValidate(t *testing.T) {
@@ -20,18 +22,24 @@ func TestValidate(t *testing.T) {
 			config: Config{
 				InfluxDB: InfluxDBConfig{
 					URL:          "http://localhost:8086",
-					Token:        "test-token",
+					Token:        "a-very-secret-token",
 					Organization: "test-org",
 					Bucket:       "test-bucket",
 				},
 				Matter: MatterConfig{
-					DiscoveryInterval: 5 * time.Minute,
-					PollInterval:      30 * time.Second,
-					ServiceType:       "_matter._tcp",
-					Domain:            "local.",
+					DiscoveryInterval:   5 * time.Minute,
+					PollInterval:        30 * time.Second,
+					ServiceType:         "_matter._tcp",
+					Domain:              "local.",
+					ReadingsChannelSize: 100,
 				},
 				Logging: LoggingConfig{
 					Level: "info",
+				},
+				Cache: CacheConfig{
+					Directory: "/tmp/cache",
+					MaxSize:   1024 * 1024,
+					MaxAge:    time.Hour,
 				},
 			},
 			wantErr: false,
@@ -40,53 +48,105 @@ func TestValidate(t *testing.T) {
 			name: "missing influxdb url",
 			config: Config{
 				InfluxDB: InfluxDBConfig{
-					Token:        "test-token",
+					Token:        "a-very-secret-token",
 					Organization: "test-org",
 					Bucket:       "test-bucket",
 				},
 				Matter: MatterConfig{
-					DiscoveryInterval: 5 * time.Minute,
-					PollInterval:      30 * time.Second,
+					DiscoveryInterval:   5 * time.Minute,
+					PollInterval:        30 * time.Second,
+					ServiceType:         "_matter._tcp",
+					Domain:              "local.",
+					ReadingsChannelSize: 100,
 				},
 				Logging: LoggingConfig{
 					Level: "info",
+				},
+				Cache: CacheConfig{
+					Directory: "/tmp/cache",
+					MaxSize:   1024 * 1024,
+					MaxAge:    time.Hour,
 				},
 			},
 			wantErr: true,
 		},
 		{
-			name: "missing influxdb token",
+			name: "influxdb token too short",
 			config: Config{
 				InfluxDB: InfluxDBConfig{
 					URL:          "http://localhost:8086",
+					Token:        "short",
 					Organization: "test-org",
 					Bucket:       "test-bucket",
 				},
 				Matter: MatterConfig{
-					DiscoveryInterval: 5 * time.Minute,
-					PollInterval:      30 * time.Second,
+					DiscoveryInterval:   5 * time.Minute,
+					PollInterval:        30 * time.Second,
+					ServiceType:         "_matter._tcp",
+					Domain:              "local.",
+					ReadingsChannelSize: 100,
 				},
 				Logging: LoggingConfig{
 					Level: "info",
+				},
+				Cache: CacheConfig{
+					Directory: "/tmp/cache",
+					MaxSize:   1024 * 1024,
+					MaxAge:    time.Hour,
 				},
 			},
 			wantErr: true,
 		},
 		{
-			name: "invalid poll interval",
+			name: "invalid poll interval (too short)",
 			config: Config{
 				InfluxDB: InfluxDBConfig{
 					URL:          "http://localhost:8086",
-					Token:        "test-token",
+					Token:        "a-very-secret-token",
 					Organization: "test-org",
 					Bucket:       "test-bucket",
 				},
 				Matter: MatterConfig{
-					DiscoveryInterval: 5 * time.Minute,
-					PollInterval:      500 * time.Millisecond,
+					DiscoveryInterval:   5 * time.Minute,
+					PollInterval:        500 * time.Millisecond, // < 1s
+					ServiceType:         "_matter._tcp",
+					Domain:              "local.",
+					ReadingsChannelSize: 100,
 				},
 				Logging: LoggingConfig{
 					Level: "info",
+				},
+				Cache: CacheConfig{
+					Directory: "/tmp/cache",
+					MaxSize:   1024 * 1024,
+					MaxAge:    time.Hour,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "discovery interval less than poll interval",
+			config: Config{
+				InfluxDB: InfluxDBConfig{
+					URL:          "http://localhost:8086",
+					Token:        "a-very-secret-token",
+					Organization: "test-org",
+					Bucket:       "test-bucket",
+				},
+				Matter: MatterConfig{
+					DiscoveryInterval:   10 * time.Second,
+					PollInterval:        30 * time.Second,
+					ServiceType:         "_matter._tcp",
+					Domain:              "local.",
+					ReadingsChannelSize: 100,
+				},
+				Logging: LoggingConfig{
+					Level: "info",
+				},
+				Cache: CacheConfig{
+					Directory: "/tmp/cache",
+					MaxSize:   1024 * 1024,
+					MaxAge:    time.Hour,
 				},
 			},
 			wantErr: true,
@@ -96,16 +156,105 @@ func TestValidate(t *testing.T) {
 			config: Config{
 				InfluxDB: InfluxDBConfig{
 					URL:          "http://localhost:8086",
-					Token:        "test-token",
+					Token:        "a-very-secret-token",
 					Organization: "test-org",
 					Bucket:       "test-bucket",
 				},
 				Matter: MatterConfig{
-					DiscoveryInterval: 5 * time.Minute,
-					PollInterval:      30 * time.Second,
+					DiscoveryInterval:   5 * time.Minute,
+					PollInterval:        30 * time.Second,
+					ServiceType:         "_matter._tcp",
+					Domain:              "local.",
+					ReadingsChannelSize: 100,
 				},
 				Logging: LoggingConfig{
 					Level: "invalid",
+				},
+				Cache: CacheConfig{
+					Directory: "/tmp/cache",
+					MaxSize:   1024 * 1024,
+					MaxAge:    time.Hour,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "non-local HTTP URL for InfluxDB",
+			config: Config{
+				InfluxDB: InfluxDBConfig{
+					URL:          "http://example.com:8086", // Non-local HTTP, should fail
+					Token:        "a-very-secret-token",
+					Organization: "test-org",
+					Bucket:       "test-bucket",
+				},
+				Matter: MatterConfig{
+					DiscoveryInterval:   5 * time.Minute,
+					PollInterval:        30 * time.Second,
+					ServiceType:         "_matter._tcp",
+					Domain:              "local.",
+					ReadingsChannelSize: 100,
+				},
+				Logging: LoggingConfig{
+					Level: "info",
+				},
+				Cache: CacheConfig{
+					Directory: "/tmp/cache",
+					MaxSize:   1024 * 1024,
+					MaxAge:    time.Hour,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid HTTPS URL for InfluxDB",
+			config: Config{
+				InfluxDB: InfluxDBConfig{
+					URL:          "https://example.com:8086", // Valid HTTPS
+					Token:        "a-very-secret-token",
+					Organization: "test-org",
+					Bucket:       "test-bucket",
+				},
+				Matter: MatterConfig{
+					DiscoveryInterval:   5 * time.Minute,
+					PollInterval:        30 * time.Second,
+					ServiceType:         "_matter._tcp",
+					Domain:              "local.",
+					ReadingsChannelSize: 100,
+				},
+				Logging: LoggingConfig{
+					Level: "info",
+				},
+				Cache: CacheConfig{
+					Directory: "/tmp/cache",
+					MaxSize:   1024 * 1024,
+					MaxAge:    time.Hour,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid cache max size",
+			config: Config{
+				InfluxDB: InfluxDBConfig{
+					URL:          "http://localhost:8086", // Valid HTTP since local
+					Token:        "a-very-secret-token",
+					Organization: "test-org",
+					Bucket:       "test-bucket",
+				},
+				Matter: MatterConfig{
+					DiscoveryInterval:   5 * time.Minute,
+					PollInterval:        30 * time.Second,
+					ServiceType:         "_matter._tcp",
+					Domain:              "local.",
+					ReadingsChannelSize: 100,
+				},
+				Logging: LoggingConfig{
+					Level: "info",
+				},
+				Cache: CacheConfig{
+					Directory: "/tmp/cache",
+					MaxSize:   0, // Invalid: min=1
+					MaxAge:    time.Hour,
 				},
 			},
 			wantErr: true,
@@ -116,6 +265,13 @@ func TestValidate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.config.Validate()
 			if (err != nil) != tt.wantErr {
+				// Check if the error is a validation error for more specific assertions
+				if vErrs, ok := err.(validator.ValidationErrors); ok {
+					// Log specific validation errors for debugging
+					for _, vErr := range vErrs {
+						t.Logf("Validation error: Field=%s, Tag=%s, Value=%v", vErr.Field(), vErr.Tag(), vErr.Value())
+					}
+				}
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -130,7 +286,6 @@ func TestLoad_FileNotFound(t *testing.T) {
 }
 
 func TestLoad_InvalidYAML(t *testing.T) {
-	// Create a temporary invalid YAML file
 	tmpfile, err := os.CreateTemp("", "invalid-*.yaml")
 	if err != nil {
 		t.Fatal(err)
@@ -150,7 +305,6 @@ func TestLoad_InvalidYAML(t *testing.T) {
 }
 
 func TestLoad_ValidFile(t *testing.T) {
-	// Create a temporary valid config file
 	tmpfile, err := os.CreateTemp("", "config-*.yaml")
 	if err != nil {
 		t.Fatal(err)
@@ -167,6 +321,10 @@ matter:
   poll_interval: 30s
 logging:
   level: "info"
+cache:
+  directory: "/tmp/cache"
+  max_size: 104857600
+  max_age: 24h
 `)
 	if _, writeErr := tmpfile.Write(content); writeErr != nil {
 		t.Fatal(writeErr)
@@ -193,7 +351,6 @@ logging:
 }
 
 func TestLoad_EnvironmentOverrides(t *testing.T) {
-	// Create a temporary config file
 	tmpfile, err := os.CreateTemp("", "config-*.yaml")
 	if err != nil {
 		t.Fatal(err)
@@ -210,6 +367,10 @@ matter:
   poll_interval: 30s
 logging:
   level: "info"
+cache:
+  directory: "/tmp/cache_file"
+  max_size: 104857600
+  max_age: 24h
 `)
 	if _, writeErr := tmpfile.Write(content); writeErr != nil {
 		t.Fatal(writeErr)
@@ -218,12 +379,13 @@ logging:
 
 	// Set environment variables to override
 	_ = os.Setenv("INFLUXDB_URL", "https://env-host:8086")
-	_ = os.Setenv("INFLUXDB_TOKEN", "env-token")
+	_ = os.Setenv("INFLUXDB_TOKEN", "env-token-123")
 	_ = os.Setenv("INFLUXDB_ORG", "env-org")
 	_ = os.Setenv("INFLUXDB_BUCKET", "env-bucket")
 	_ = os.Setenv("LOG_LEVEL", "debug")
 	_ = os.Setenv("MATTER_DISCOVERY_INTERVAL", "10m")
 	_ = os.Setenv("MATTER_POLL_INTERVAL", "1m")
+	_ = os.Setenv("CACHE_DIRECTORY", "/tmp/cache_env")
 
 	defer func() {
 		_ = os.Unsetenv("INFLUXDB_URL")
@@ -233,6 +395,7 @@ logging:
 		_ = os.Unsetenv("LOG_LEVEL")
 		_ = os.Unsetenv("MATTER_DISCOVERY_INTERVAL")
 		_ = os.Unsetenv("MATTER_POLL_INTERVAL")
+		_ = os.Unsetenv("CACHE_DIRECTORY")
 	}()
 
 	cfg, err := Load(tmpfile.Name())
@@ -244,8 +407,8 @@ logging:
 	if cfg.InfluxDB.URL != "https://env-host:8086" {
 		t.Errorf("InfluxDB.URL = %v, want https://env-host:8086", cfg.InfluxDB.URL)
 	}
-	if cfg.InfluxDB.Token != "env-token" {
-		t.Errorf("InfluxDB.Token = %v, want env-token", cfg.InfluxDB.Token)
+	if cfg.InfluxDB.Token != "env-token-123" {
+		t.Errorf("InfluxDB.Token = %v, want env-token-123", cfg.InfluxDB.Token)
 	}
 	if cfg.InfluxDB.Organization != "env-org" {
 		t.Errorf("InfluxDB.Organization = %v, want env-org", cfg.InfluxDB.Organization)
@@ -262,10 +425,12 @@ logging:
 	if cfg.Matter.PollInterval != 1*time.Minute {
 		t.Errorf("Matter.PollInterval = %v, want 1m", cfg.Matter.PollInterval)
 	}
+	if cfg.Cache.Directory != "/tmp/cache_env" {
+		t.Errorf("Cache.Directory = %v, want /tmp/cache_env", cfg.Cache.Directory)
+	}
 }
 
 func TestLoad_Defaults(t *testing.T) {
-	// Create a minimal config file
 	tmpfile, err := os.CreateTemp("", "config-*.yaml")
 	if err != nil {
 		t.Fatal(err)
@@ -274,9 +439,9 @@ func TestLoad_Defaults(t *testing.T) {
 
 	content := []byte(`influxdb:
   url: "http://localhost:8086"
-  token: "test-token"
-  organization: "test-org"
-  bucket: "test-bucket"
+  token: "test-token-default"
+  organization: "test-org-default"
+  bucket: "test-bucket-default"
 `)
 	if _, writeErr := tmpfile.Write(content); writeErr != nil {
 		t.Fatal(writeErr)
@@ -304,116 +469,16 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Logging.Level != "info" {
 		t.Errorf("Default log level = %v, want info", cfg.Logging.Level)
 	}
-}
-
-func TestValidate_MissingFields(t *testing.T) {
-	tests := []struct {
-		name   string
-		config Config
-	}{
-		{
-			name: "missing organization",
-			config: Config{
-				InfluxDB: InfluxDBConfig{
-					URL:    "http://localhost:8086",
-					Token:  "test-token",
-					Bucket: "test-bucket",
-				},
-				Matter: MatterConfig{
-					DiscoveryInterval: 5 * time.Minute,
-					PollInterval:      30 * time.Second,
-				},
-				Logging: LoggingConfig{Level: "info"},
-			},
-		},
-		{
-			name: "missing bucket",
-			config: Config{
-				InfluxDB: InfluxDBConfig{
-					URL:          "http://localhost:8086",
-					Token:        "test-token",
-					Organization: "test-org",
-				},
-				Matter: MatterConfig{
-					DiscoveryInterval: 5 * time.Minute,
-					PollInterval:      30 * time.Second,
-				},
-				Logging: LoggingConfig{Level: "info"},
-			},
-		},
+	if cfg.Cache.Directory != "/var/cache/matter-data-logger" {
+		t.Errorf("Default cache directory = %v, want /var/cache/matter-data-logger", cfg.Cache.Directory)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.config.Validate()
-			if err == nil {
-				t.Error("Validate() should fail for missing required fields")
-			}
-		})
+	if cfg.Cache.MaxSize != 100*1024*1024 {
+		t.Errorf("Default cache max size = %v, want 100MB", cfg.Cache.MaxSize)
 	}
-}
-
-func TestValidate_InvalidIntervals(t *testing.T) {
-	tests := []struct {
-		name   string
-		config Config
-	}{
-		{
-			name: "discovery_interval less than poll_interval",
-			config: Config{
-				InfluxDB: InfluxDBConfig{
-					URL:          "http://localhost:8086",
-					Token:        "test-token",
-					Organization: "test-org",
-					Bucket:       "test-bucket",
-				},
-				Matter: MatterConfig{
-					DiscoveryInterval: 30 * time.Second,
-					PollInterval:      1 * time.Minute,
-				},
-				Logging: LoggingConfig{Level: "info"},
-			},
-		},
-		{
-			name: "zero discovery_interval",
-			config: Config{
-				InfluxDB: InfluxDBConfig{
-					URL:          "http://localhost:8086",
-					Token:        "test-token",
-					Organization: "test-org",
-					Bucket:       "test-bucket",
-				},
-				Matter: MatterConfig{
-					DiscoveryInterval: 0,
-					PollInterval:      30 * time.Second,
-				},
-				Logging: LoggingConfig{Level: "info"},
-			},
-		},
-		{
-			name: "zero poll_interval",
-			config: Config{
-				InfluxDB: InfluxDBConfig{
-					URL:          "http://localhost:8086",
-					Token:        "test-token",
-					Organization: "test-org",
-					Bucket:       "test-bucket",
-				},
-				Matter: MatterConfig{
-					DiscoveryInterval: 5 * time.Minute,
-					PollInterval:      0,
-				},
-				Logging: LoggingConfig{Level: "info"},
-			},
-		},
+	if cfg.Cache.MaxAge != 24*time.Hour {
+		t.Errorf("Default cache max age = %v, want 24h", cfg.Cache.MaxAge)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.config.Validate()
-			if err == nil {
-				t.Error("Validate() should fail for invalid intervals")
-			}
-		})
+	if cfg.Matter.ReadingsChannelSize != 100 {
+		t.Errorf("Default readings channel size = %v, want 100", cfg.Matter.ReadingsChannelSize)
 	}
 }

@@ -39,7 +39,8 @@
 //   - Monitor Prometheus memory usage and time series count
 //
 // To check current cardinality:
-//   curl http://localhost:9090/metrics | grep matter_current_ | wc -l
+//
+//	curl http://localhost:9090/metrics | grep matter_current_ | wc -l
 //
 // Note: device_name label is included for human-readable dashboards but
 // increases cardinality. For very large deployments (1000+ devices),

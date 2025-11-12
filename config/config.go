@@ -53,50 +53,58 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-playground/validator/v10"
 	"gopkg.in/yaml.v3"
 )
 
 // Config represents the application configuration
 type Config struct {
-	InfluxDB      InfluxDBConfig      `yaml:"influxdb"`
-	Matter        MatterConfig        `yaml:"matter"`
-	Logging       LoggingConfig       `yaml:"logging"`
+	InfluxDB      InfluxDBConfig      `yaml:"influxdb" validate:"required"`
+	Matter        MatterConfig        `yaml:"matter" validate:"required"`
+	Logging       LoggingConfig       `yaml:"logging" validate:"required"`
 	Notifications NotificationsConfig `yaml:"notifications"`
-	Cache         CacheConfig         `yaml:"cache"`
+	Cache         CacheConfig         `yaml:"cache" validate:"required"`
 }
 
 // InfluxDBConfig holds InfluxDB connection settings
 type InfluxDBConfig struct {
-	URL          string `yaml:"url"`
-	Token        string `yaml:"token"`
-	Organization string `yaml:"organization"`
-	Bucket       string `yaml:"bucket"`
+	URL          string `yaml:"url" validate:"required,url,influxdb_url_security"`
+	Token        string `yaml:"token" validate:"required,min=8"`
+	Organization string `yaml:"organization" validate:"required"`
+	Bucket       string `yaml:"bucket" validate:"required"`
 }
 
 // MatterConfig holds Matter device discovery settings
 type MatterConfig struct {
-	DiscoveryInterval    time.Duration `yaml:"discovery_interval"`
-	PollInterval         time.Duration `yaml:"poll_interval"`
-	ServiceType          string        `yaml:"service_type"`
-	Domain               string        `yaml:"domain"`
-	ReadingsChannelSize  int           `yaml:"readings_channel_size"`
+	DiscoveryInterval   time.Duration `yaml:"discovery_interval" validate:"required,min=1s,max=24h,gtefield=PollInterval"`
+	PollInterval        time.Duration `yaml:"poll_interval" validate:"required,min=1s,max=1h"`
+	ServiceType         string        `yaml:"service_type" validate:"required"`
+	Domain              string        `yaml:"domain" validate:"required"`
+	ReadingsChannelSize int           `yaml:"readings_channel_size" validate:"min=1,max=10000"`
 }
 
 // LoggingConfig holds logging settings
 type LoggingConfig struct {
-	Level string `yaml:"level"`
+	Level string `yaml:"level" validate:"required,oneof=debug info warn error fatal panic"`
 }
 
 // NotificationsConfig holds notification settings
 type NotificationsConfig struct {
-	SlackWebhookURL string `yaml:"slack_webhook_url"`
+	SlackWebhookURL string `yaml:"slack_webhook_url" validate:"omitempty,url"`
 }
 
 // CacheConfig holds local cache settings
 type CacheConfig struct {
-	Directory string        `yaml:"directory"`
-	MaxSize   int64         `yaml:"max_size"` // bytes
-	MaxAge    time.Duration `yaml:"max_age"`
+	Directory string        `yaml:"directory" validate:"required"`
+	MaxSize   int64         `yaml:"max_size" validate:"required,min=1"` // bytes
+	MaxAge    time.Duration `yaml:"max_age" validate:"required,min=1s"`
+}
+
+var validate *validator.Validate
+
+func init() {
+	validate = validator.New()
+	_ = validate.RegisterValidation("influxdb_url_security", validateInfluxDBURLSecurity)
 }
 
 // Load reads configuration from a YAML file and applies environment variable overrides
@@ -199,61 +207,19 @@ func (c *Config) setDefaults() {
 
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
-	if validateErr := c.validateInfluxDB(); validateErr != nil {
-		return validateErr
-	}
-
-	if validateErr := c.validateMatter(); validateErr != nil {
-		return validateErr
-	}
-
-	if validateErr := c.validateLogging(); validateErr != nil {
-		return validateErr
-	}
-
-	return nil
+	return validate.Struct(c)
 }
 
-// validateInfluxDB validates the InfluxDB configuration
-func (c *Config) validateInfluxDB() error {
-	if c.InfluxDB.URL == "" {
-		return fmt.Errorf("influxdb.url is required")
+// validateInfluxDBURLSecurity is a custom validator for InfluxDB URL security
+func validateInfluxDBURLSecurity(fl validator.FieldLevel) bool {
+	rawURL := fl.Field().String()
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return false // Malformed URL, let 'url' tag handle it
 	}
 
-	// Validate URL format and security
-	parsedURL, parseErr := url.Parse(c.InfluxDB.URL)
-	if parseErr != nil {
-		return fmt.Errorf("influxdb.url is not a valid URL: %w", parseErr)
-	}
-
-	// Check for HTTPS in production-like URLs (not localhost/127.0.0.1)
-	if securityErr := validateURLSecurity(parsedURL); securityErr != nil {
-		return securityErr
-	}
-
-	if c.InfluxDB.Token == "" {
-		return fmt.Errorf("influxdb.token is required")
-	}
-
-	// Validate token format (basic check for minimum length)
-	if len(c.InfluxDB.Token) < 8 {
-		return fmt.Errorf("influxdb.token must be at least 8 characters long")
-	}
-
-	if c.InfluxDB.Organization == "" {
-		return fmt.Errorf("influxdb.organization is required")
-	}
-	if c.InfluxDB.Bucket == "" {
-		return fmt.Errorf("influxdb.bucket is required")
-	}
-
-	return nil
-}
-
-// validateURLSecurity checks if the URL uses HTTPS for non-local connections
-func validateURLSecurity(parsedURL *url.URL) error {
 	if parsedURL.Scheme != "http" {
-		return nil
+		return true // HTTPS or other schemes are fine
 	}
 
 	hostname := strings.ToLower(parsedURL.Hostname())
@@ -264,53 +230,5 @@ func validateURLSecurity(parsedURL *url.URL) error {
 		strings.HasPrefix(hostname, "10.") ||
 		strings.HasPrefix(hostname, "172.")
 
-	if !isLocal {
-		return fmt.Errorf("influxdb.url must use HTTPS for non-local connections (got %s). Using HTTP transmits credentials in plaintext and is a security risk", parsedURL.Scheme)
-	}
-
-	return nil
-}
-
-// validateMatter validates the Matter configuration
-func (c *Config) validateMatter() error {
-	if c.Matter.DiscoveryInterval < time.Second {
-		return fmt.Errorf("matter.discovery_interval must be at least 1 second")
-	}
-	if c.Matter.DiscoveryInterval > 24*time.Hour {
-		return fmt.Errorf("matter.discovery_interval must not exceed 24 hours")
-	}
-	if c.Matter.PollInterval < time.Second {
-		return fmt.Errorf("matter.poll_interval must be at least 1 second")
-	}
-	if c.Matter.PollInterval > 1*time.Hour {
-		return fmt.Errorf("matter.poll_interval must not exceed 1 hour")
-	}
-	if c.Matter.DiscoveryInterval < c.Matter.PollInterval {
-		return fmt.Errorf("matter.discovery_interval should be greater than or equal to matter.poll_interval")
-	}
-	// Only validate channel size if explicitly set (non-zero)
-	// Zero value is allowed and will be set to default (100)
-	if c.Matter.ReadingsChannelSize != 0 {
-		if c.Matter.ReadingsChannelSize < 1 {
-			return fmt.Errorf("matter.readings_channel_size must be at least 1")
-		}
-		if c.Matter.ReadingsChannelSize > 10000 {
-			return fmt.Errorf("matter.readings_channel_size must not exceed 10000 (got %d)", c.Matter.ReadingsChannelSize)
-		}
-	}
-
-	return nil
-}
-
-// validateLogging validates the logging configuration
-func (c *Config) validateLogging() error {
-	validLevels := map[string]bool{
-		"debug": true, "info": true, "warn": true,
-		"warning": true, "error": true, "fatal": true, "panic": true,
-	}
-	if !validLevels[c.Logging.Level] {
-		return fmt.Errorf("logging.level must be one of: debug, info, warn, error, fatal, panic")
-	}
-
-	return nil
+	return isLocal // Only allow HTTP for local connections
 }

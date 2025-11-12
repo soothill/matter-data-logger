@@ -12,7 +12,6 @@ import (
 )
 
 // PowerReading represents a power consumption measurement.
-// This is redeclared here to avoid circular dependencies.
 type PowerReading struct {
 	DeviceID   string
 	DeviceName string
@@ -45,4 +44,7 @@ type TimeSeriesStorage interface {
 
 	// QueryLatestReading retrieves the most recent reading for a device
 	QueryLatestReading(ctx context.Context, deviceID string) (*PowerReading, error)
+
+	// Client returns the underlying InfluxDB client (if applicable)
+	Client() interface{}
 }

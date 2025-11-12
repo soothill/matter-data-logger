@@ -12,9 +12,9 @@
 // Key connection pooling behaviors:
 //   - HTTP/1.1 persistent connections are reused automatically
 //   - Default Go http.Transport settings apply:
-//     * MaxIdleConns: 100 (total idle connections across all hosts)
-//     * MaxIdleConnsPerHost: 2 (idle connections per host)
-//     * IdleConnTimeout: 90 seconds (time before idle connections are closed)
+//   - MaxIdleConns: 100 (total idle connections across all hosts)
+//   - MaxIdleConnsPerHost: 2 (idle connections per host)
+//   - IdleConnTimeout: 90 seconds (time before idle connections are closed)
 //   - Connections are thread-safe and can be used concurrently
 //   - No manual connection management is required
 //
@@ -32,7 +32,7 @@ import (
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/sony/gobreaker"
-	"github.com/soothill/matter-data-logger/monitoring"
+	"github.com/soothill/matter-data-logger/pkg/interfaces"
 	"github.com/soothill/matter-data-logger/pkg/logger"
 )
 
@@ -58,7 +58,7 @@ type InfluxDBStorage struct {
 }
 
 type retryItem struct {
-	reading  *monitoring.PowerReading
+	reading  *interfaces.PowerReading
 	attempts int
 }
 
@@ -113,7 +113,7 @@ func NewInfluxDBStorage(url, token, org, bucket string) (*InfluxDBStorage, error
 	// write attempts when InfluxDB is experiencing issues
 	cbSettings := gobreaker.Settings{
 		Name:        "InfluxDB",
-		MaxRequests: 1,              // Allow 1 request in half-open state
+		MaxRequests: 1,                // Allow 1 request in half-open state
 		Interval:    60 * time.Second, // Window for counting failures
 		Timeout:     30 * time.Second, // Time before moving from open to half-open
 		ReadyToTrip: func(counts gobreaker.Counts) bool {
@@ -153,7 +153,7 @@ func NewInfluxDBStorage(url, token, org, bucket string) (*InfluxDBStorage, error
 // WriteReading writes a power reading to InfluxDB
 // The context can be used for cancellation and timeout control
 // Uses circuit breaker to prevent cascading failures when InfluxDB is unavailable
-func (s *InfluxDBStorage) WriteReading(ctx context.Context, reading *monitoring.PowerReading) error {
+func (s *InfluxDBStorage) WriteReading(ctx context.Context, reading *interfaces.PowerReading) error {
 	// Check if context is already canceled
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context canceled: %w", err)
@@ -218,7 +218,7 @@ func (s *InfluxDBStorage) WriteReading(ctx context.Context, reading *monitoring.
 
 // WriteBatch writes multiple readings efficiently
 // The context can be used for cancellation and timeout control
-func (s *InfluxDBStorage) WriteBatch(ctx context.Context, readings []*monitoring.PowerReading) error {
+func (s *InfluxDBStorage) WriteBatch(ctx context.Context, readings []*interfaces.PowerReading) error {
 	if readings == nil {
 		return fmt.Errorf("readings slice cannot be nil")
 	}
@@ -357,7 +357,7 @@ func (s *InfluxDBStorage) processRetries() {
 }
 
 // Client returns the underlying InfluxDB client for advanced operations
-func (s *InfluxDBStorage) Client() influxdb2.Client {
+func (s *InfluxDBStorage) Client() interface{} {
 	return s.client
 }
 
@@ -396,9 +396,10 @@ func (s *InfluxDBStorage) Health(ctx context.Context) error {
 //   - The function is used for all user-controlled query parameters
 //
 // Example attack prevention:
-//   Input:  device-1" |> drop() |> from(bucket: "evil
-//   Output: device-1\" |> drop() |> from(bucket: \"evil
-//   Result: Treated as literal string, not executed as Flux code
+//
+//	Input:  device-1" |> drop() |> from(bucket: "evil
+//	Output: device-1\" |> drop() |> from(bucket: \"evil
+//	Result: Treated as literal string, not executed as Flux code
 //
 // Note: While Flux doesn't support parameterized queries like SQL, this approach
 // provides defense-in-depth against injection attacks.
@@ -427,7 +428,7 @@ func sanitizeFluxString(s string) string {
 }
 
 // QueryLatestReading retrieves the most recent power reading for a device
-func (s *InfluxDBStorage) QueryLatestReading(ctx context.Context, deviceID string) (*monitoring.PowerReading, error) {
+func (s *InfluxDBStorage) QueryLatestReading(ctx context.Context, deviceID string) (*interfaces.PowerReading, error) {
 	// Validate input
 	if deviceID == "" {
 		return nil, fmt.Errorf("device ID cannot be empty")
@@ -455,7 +456,7 @@ func (s *InfluxDBStorage) QueryLatestReading(ctx context.Context, deviceID strin
 		_ = result.Close()
 	}()
 
-	reading := &monitoring.PowerReading{
+	reading := &interfaces.PowerReading{
 		DeviceID: deviceID,
 	}
 

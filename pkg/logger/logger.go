@@ -62,7 +62,8 @@
 //   - Structured key-value pairs
 //
 // Example output:
-//   2025-11-11T10:30:45-08:00 INF Power reading recorded device_id=device-1 power=100.5
+//
+//	2025-11-11T10:30:45-08:00 INF Power reading recorded device_id=device-1 power=100.5
 //
 // # Global Logger Access
 //
@@ -110,7 +111,7 @@ import (
 )
 
 var (
-	log                 zerolog.Logger
+	log                zerolog.Logger
 	errInvalidLogLevel = errors.New("invalid log level")
 )
 

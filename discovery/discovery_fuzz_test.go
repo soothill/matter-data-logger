@@ -48,20 +48,20 @@ func FuzzDevice_HasPowerMeasurement(f *testing.F) {
 // FuzzDevice_GetDeviceID tests GetDeviceID with random discriminator values
 func FuzzDevice_GetDeviceID(f *testing.F) {
 	// Seed corpus with known inputs
-	f.Add("12345")                    // Normal discriminator
-	f.Add("")                         // Empty discriminator
-	f.Add("device-abc-123")           // Alphanumeric
+	f.Add("12345")                     // Normal discriminator
+	f.Add("")                          // Empty discriminator
+	f.Add("device-abc-123")            // Alphanumeric
 	f.Add("1234567890123456789012345") // Very long
-	f.Add("\x00\x01\x02")             // Binary data
-	f.Add("device\nwith\nnewlines")   // With newlines
-	f.Add("device\twith\ttabs")       // With tabs
-	f.Add("192.168.1.100:5540")       // IP:port format
-	f.Add("::::")                     // Colons
-	f.Add("device/with/slashes")      // Slashes
-	f.Add("device with spaces")       // Spaces
-	f.Add("UPPERCASE")                // Uppercase
-	f.Add("MiXeD-CaSe-123")           // Mixed case
-	f.Add("unicode-日本語-测试")         // Unicode
+	f.Add("\x00\x01\x02")              // Binary data
+	f.Add("device\nwith\nnewlines")    // With newlines
+	f.Add("device\twith\ttabs")        // With tabs
+	f.Add("192.168.1.100:5540")        // IP:port format
+	f.Add("::::")                      // Colons
+	f.Add("device/with/slashes")       // Slashes
+	f.Add("device with spaces")        // Spaces
+	f.Add("UPPERCASE")                 // Uppercase
+	f.Add("MiXeD-CaSe-123")            // Mixed case
+	f.Add("unicode-日本語-测试")            // Unicode
 	f.Add("\"; DROP TABLE devices;--") // SQL injection attempt
 
 	f.Fuzz(func(t *testing.T, discriminator string) {
@@ -160,13 +160,13 @@ func FuzzDevice_HasPowerMeasurement_InvalidTXTRecord(f *testing.F) {
 // FuzzDevice_ClusterStringParsing tests various cluster string formats
 func FuzzDevice_ClusterStringParsing(f *testing.F) {
 	// Seed corpus with various formats that should be handled gracefully
-	f.Add("0B04", ",", 4)  // Normal with comma separator
-	f.Add("B04", ";", 3)   // Without leading zero, semicolon separator
-	f.Add("0091", " ", 4)  // Space separator
-	f.Add("91", "|", 2)    // Short form with pipe
-	f.Add("0B04", "", 4)   // No separator
-	f.Add("", ",", 0)      // Empty cluster
-	f.Add("XXXX", ",", 4)  // Invalid hex
+	f.Add("0B04", ",", 4) // Normal with comma separator
+	f.Add("B04", ";", 3)  // Without leading zero, semicolon separator
+	f.Add("0091", " ", 4) // Space separator
+	f.Add("91", "|", 2)   // Short form with pipe
+	f.Add("0B04", "", 4)  // No separator
+	f.Add("", ",", 0)     // Empty cluster
+	f.Add("XXXX", ",", 4) // Invalid hex
 
 	f.Fuzz(func(_ *testing.T, cluster string, separator string, length int) {
 		// Build a cluster string with the given format

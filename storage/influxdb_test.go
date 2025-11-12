@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/soothill/matter-data-logger/monitoring"
+	"github.com/soothill/matter-data-logger/pkg/interfaces"
 )
 
 func TestNewInfluxDBStorage_InvalidURL(t *testing.T) {
@@ -67,7 +67,7 @@ func TestNewInfluxDBStorage_ValidParameters(t *testing.T) {
 func TestWriteReading_ValidReading(t *testing.T) {
 	// Create a mock storage (won't actually connect to InfluxDB)
 	// This tests the data structure and method signature
-	reading := &monitoring.PowerReading{
+	reading := &interfaces.PowerReading{
 		DeviceID:   "test-device-1",
 		DeviceName: "Test Device",
 		Timestamp:  time.Now(),
@@ -94,7 +94,7 @@ func TestWriteReading_ValidReading(t *testing.T) {
 
 func TestWriteReading_NilReading(t *testing.T) {
 	// Test handling of nil reading
-	var reading *monitoring.PowerReading
+	var reading *interfaces.PowerReading
 
 	if reading != nil {
 		t.Error("Test setup error: reading should be nil")
@@ -105,7 +105,7 @@ func TestWriteReading_NilReading(t *testing.T) {
 }
 
 func TestWriteBatch_ValidReadings(t *testing.T) {
-	readings := []*monitoring.PowerReading{
+	readings := []*interfaces.PowerReading{
 		{
 			DeviceID:   "device-1",
 			DeviceName: "Device 1",
@@ -141,7 +141,7 @@ func TestWriteBatch_ValidReadings(t *testing.T) {
 }
 
 func TestWriteBatch_EmptySlice(t *testing.T) {
-	readings := []*monitoring.PowerReading{}
+	readings := []*interfaces.PowerReading{}
 
 	if len(readings) != 0 {
 		t.Error("Empty slice should have length 0")
@@ -151,7 +151,7 @@ func TestWriteBatch_EmptySlice(t *testing.T) {
 }
 
 func TestWriteBatch_NilSlice(t *testing.T) {
-	var readings []*monitoring.PowerReading
+	var readings []*interfaces.PowerReading
 
 	if readings != nil {
 		t.Error("Nil slice should be nil")
@@ -163,12 +163,12 @@ func TestWriteBatch_NilSlice(t *testing.T) {
 func TestPowerReading_Validation(t *testing.T) {
 	tests := []struct {
 		name    string
-		reading *monitoring.PowerReading
+		reading *interfaces.PowerReading
 		valid   bool
 	}{
 		{
 			name: "valid reading",
-			reading: &monitoring.PowerReading{
+			reading: &interfaces.PowerReading{
 				DeviceID:   "device-1",
 				DeviceName: "Device 1",
 				Timestamp:  time.Now(),
@@ -181,7 +181,7 @@ func TestPowerReading_Validation(t *testing.T) {
 		},
 		{
 			name: "zero power",
-			reading: &monitoring.PowerReading{
+			reading: &interfaces.PowerReading{
 				DeviceID:   "device-1",
 				DeviceName: "Device 1",
 				Timestamp:  time.Now(),
@@ -194,7 +194,7 @@ func TestPowerReading_Validation(t *testing.T) {
 		},
 		{
 			name: "negative power",
-			reading: &monitoring.PowerReading{
+			reading: &interfaces.PowerReading{
 				DeviceID:   "device-1",
 				DeviceName: "Device 1",
 				Timestamp:  time.Now(),
@@ -207,7 +207,7 @@ func TestPowerReading_Validation(t *testing.T) {
 		},
 		{
 			name: "missing device ID",
-			reading: &monitoring.PowerReading{
+			reading: &interfaces.PowerReading{
 				DeviceID:   "",
 				DeviceName: "Device 1",
 				Timestamp:  time.Now(),
@@ -220,7 +220,7 @@ func TestPowerReading_Validation(t *testing.T) {
 		},
 		{
 			name: "missing timestamp",
-			reading: &monitoring.PowerReading{
+			reading: &interfaces.PowerReading{
 				DeviceID:   "device-1",
 				DeviceName: "Device 1",
 				Timestamp:  time.Time{},
@@ -244,7 +244,7 @@ func TestPowerReading_Validation(t *testing.T) {
 }
 
 // validatePowerReading checks if a power reading has valid data
-func validatePowerReading(reading *monitoring.PowerReading) bool {
+func validatePowerReading(reading *interfaces.PowerReading) bool {
 	if reading == nil {
 		return false
 	}
@@ -277,7 +277,7 @@ func TestInfluxDBStorage_FlushAndClose(t *testing.T) {
 
 func TestInfluxDBDataPoint_Structure(t *testing.T) {
 	// Test the data structure we're writing to InfluxDB
-	reading := &monitoring.PowerReading{
+	reading := &interfaces.PowerReading{
 		DeviceID:   "test-device",
 		DeviceName: "Test Smart Plug",
 		Timestamp:  time.Date(2025, 1, 10, 12, 0, 0, 0, time.UTC),
@@ -434,12 +434,12 @@ func TestWriteReading_Validation(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		reading     *monitoring.PowerReading
+		reading     *interfaces.PowerReading
 		expectError bool
 	}{
 		{
 			name: "valid reading",
-			reading: &monitoring.PowerReading{
+			reading: &interfaces.PowerReading{
 				DeviceID:   "device-1",
 				DeviceName: "Test Device",
 				Timestamp:  time.Now(),
@@ -457,7 +457,7 @@ func TestWriteReading_Validation(t *testing.T) {
 		},
 		{
 			name: "empty device ID",
-			reading: &monitoring.PowerReading{
+			reading: &interfaces.PowerReading{
 				DeviceID:   "",
 				DeviceName: "Test Device",
 				Timestamp:  time.Now(),
@@ -467,7 +467,7 @@ func TestWriteReading_Validation(t *testing.T) {
 		},
 		{
 			name: "zero timestamp",
-			reading: &monitoring.PowerReading{
+			reading: &interfaces.PowerReading{
 				DeviceID:   "device-1",
 				DeviceName: "Test Device",
 				Timestamp:  time.Time{},
@@ -508,12 +508,12 @@ func (e *validationError) Error() string {
 func TestWriteBatch_Validation(t *testing.T) {
 	tests := []struct {
 		name        string
-		readings    []*monitoring.PowerReading
+		readings    []*interfaces.PowerReading
 		expectError bool
 	}{
 		{
 			name: "valid batch",
-			readings: []*monitoring.PowerReading{
+			readings: []*interfaces.PowerReading{
 				{
 					DeviceID:   "device-1",
 					DeviceName: "Device 1",
@@ -536,7 +536,7 @@ func TestWriteBatch_Validation(t *testing.T) {
 		},
 		{
 			name:        "empty batch",
-			readings:    []*monitoring.PowerReading{},
+			readings:    []*interfaces.PowerReading{},
 			expectError: false,
 		},
 	}
@@ -641,7 +641,7 @@ func TestCircuitBreaker_Validation(t *testing.T) {
 	// These should all fail validation BEFORE circuit breaker
 	testCases := []struct {
 		name    string
-		reading *monitoring.PowerReading
+		reading *interfaces.PowerReading
 	}{
 		{
 			name:    "nil reading",
@@ -649,21 +649,21 @@ func TestCircuitBreaker_Validation(t *testing.T) {
 		},
 		{
 			name: "empty device ID",
-			reading: &monitoring.PowerReading{
+			reading: &interfaces.PowerReading{
 				DeviceID:  "",
 				Timestamp: time.Now(),
 			},
 		},
 		{
 			name: "zero timestamp",
-			reading: &monitoring.PowerReading{
+			reading: &interfaces.PowerReading{
 				DeviceID:  "device-1",
 				Timestamp: time.Time{},
 			},
 		},
 		{
 			name: "negative power",
-			reading: &monitoring.PowerReading{
+			reading: &interfaces.PowerReading{
 				DeviceID:  "device-1",
 				Timestamp: time.Now(),
 				Power:     -100.0,
@@ -706,7 +706,7 @@ func BenchmarkSanitizeFluxString(b *testing.B) {
 }
 
 func BenchmarkValidatePowerReading(b *testing.B) {
-	reading := &monitoring.PowerReading{
+	reading := &interfaces.PowerReading{
 		DeviceID:   "test-device-1",
 		DeviceName: "Test Device",
 		Timestamp:  time.Now(),
@@ -725,7 +725,7 @@ func BenchmarkValidatePowerReading(b *testing.B) {
 func BenchmarkPowerReadingCreation(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = &monitoring.PowerReading{
+		_ = &interfaces.PowerReading{
 			DeviceID:   "device-1",
 			DeviceName: "Device 1",
 			Timestamp:  time.Now(),
@@ -740,9 +740,9 @@ func BenchmarkPowerReadingCreation(b *testing.B) {
 func BenchmarkBatchCreation(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		readings := make([]*monitoring.PowerReading, 100)
+		readings := make([]*interfaces.PowerReading, 100)
 		for j := 0; j < 100; j++ {
-			readings[j] = &monitoring.PowerReading{
+			readings[j] = &interfaces.PowerReading{
 				DeviceID:   "device-1",
 				DeviceName: "Device 1",
 				Timestamp:  time.Now(),

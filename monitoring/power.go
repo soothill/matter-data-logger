@@ -67,11 +67,11 @@ package monitoring
 
 import (
 	"context"
-	"math/rand"
 	"sync"
 	"time"
 
 	"github.com/soothill/matter-data-logger/discovery"
+	"github.com/soothill/matter-data-logger/pkg/interfaces"
 	"github.com/soothill/matter-data-logger/pkg/logger"
 	"github.com/soothill/matter-data-logger/pkg/metrics"
 )
@@ -84,17 +84,6 @@ const (
 	simulatedVoltageVar  = 2.0   // Voltage variation range (±1V, making 119-121V)
 )
 
-// PowerReading represents a power consumption measurement
-type PowerReading struct {
-	DeviceID   string
-	DeviceName string
-	Timestamp  time.Time
-	Power      float64 // Power in watts
-	Voltage    float64 // Voltage in volts
-	Current    float64 // Current in amperes
-	Energy     float64 // Cumulative energy in kWh
-}
-
 // DeviceScanner defines the interface for retrieving device information
 type DeviceScanner interface {
 	GetDeviceByID(deviceID string) *discovery.Device
@@ -103,7 +92,7 @@ type DeviceScanner interface {
 // PowerMonitor handles power consumption monitoring
 type PowerMonitor struct {
 	pollInterval     time.Duration
-	readings         chan *PowerReading
+	readings         chan *interfaces.PowerReading
 	monitoredDevices map[string]context.CancelFunc
 	deviceMutex      sync.RWMutex
 	wg               sync.WaitGroup
@@ -115,7 +104,7 @@ type PowerMonitor struct {
 func NewPowerMonitor(pollInterval time.Duration, scanner DeviceScanner, channelSize int) *PowerMonitor {
 	return &PowerMonitor{
 		pollInterval:     pollInterval,
-		readings:         make(chan *PowerReading, channelSize),
+		readings:         make(chan *interfaces.PowerReading, channelSize),
 		monitoredDevices: make(map[string]context.CancelFunc),
 		scanner:          scanner,
 	}
@@ -187,11 +176,16 @@ func (pm *PowerMonitor) GetMonitoredDeviceCount() int {
 func (pm *PowerMonitor) monitorDevice(ctx context.Context, device *discovery.Device) {
 	defer pm.wg.Done()
 
-	ticker := time.NewTicker(pm.pollInterval)
+	// Start with the current interval
+	pm.deviceMutex.RLock()
+	currentInterval := pm.pollInterval
+	pm.deviceMutex.RUnlock()
+	ticker := time.NewTicker(currentInterval)
 	defer ticker.Stop()
 
 	deviceID := device.GetDeviceID()
 	logger.Info().Str("device_id", deviceID).Str("device_name", device.Name).
+		Dur("interval", currentInterval).
 		Msg("Monitoring device")
 
 	// Clean up when done
@@ -230,56 +224,34 @@ func (pm *PowerMonitor) monitorDevice(ctx context.Context, device *discovery.Dev
 				logger.Warn().Str("device_id", deviceID).Str("device_name", device.Name).
 					Msg("Readings channel full, dropping reading")
 			}
+
+			// After reading, check if the interval has changed and reset the ticker
+			pm.deviceMutex.RLock()
+			if pm.pollInterval != currentInterval {
+				currentInterval = pm.pollInterval
+				ticker.Reset(currentInterval)
+				logger.Info().Str("device_id", deviceID).Dur("new_interval", currentInterval).
+					Msg("Updated monitoring interval for device")
+			}
+			pm.deviceMutex.RUnlock()
 		}
 	}
 }
 
-// readPower reads power consumption from a Matter device
-// NOTE: This is a simplified implementation. In a real system, you would:
-// 1. Establish a Matter session with the device
-// 2. Read attributes from the Electrical Measurement cluster (0x0B04)
-// 3. Parse the Matter TLV-encoded response
-// For demonstration purposes, this generates simulated data
-func (pm *PowerMonitor) readPower(device *discovery.Device) (*PowerReading, error) {
-	// In a production system, you would implement actual Matter protocol communication here
-	// This would involve:
-	// - PASE/CASE session establishment
-	// - Reading cluster attributes via Matter protocol
-	// - Handling Matter message encoding/decoding
-
-	// For now, we'll simulate realistic power readings
-	// You would replace this with actual Matter cluster reads
-
-	// Simulate reading from Matter Electrical Measurement cluster
-	// Typical attributes:
-	// - ActivePower (0x050B): signed 16-bit, in watts
-	// - RMSVoltage (0x0505): unsigned 16-bit, in volts
-	// - RMSCurrent (0x0508): unsigned 16-bit, in milliamps
-
-	baseLoad := simulatedBaseLoadMin + rand.Float64()*simulatedLoadRange
-	variation := (rand.Float64() - 0.5) * simulatedVariation
-	power := baseLoad + variation
-
-	voltage := simulatedBaseVoltage + (rand.Float64()-0.5)*simulatedVoltageVar
-	current := power / voltage
+// readPower reads power consumption from a Matter device.
+func (pm *PowerMonitor) readPower(device *discovery.Device) (*interfaces.PowerReading, error) {
+	client := NewMatterClient(device)
+	reading, err := client.ReadPower()
+	if err != nil {
+		return nil, err
+	}
 
 	// Get current device name from scanner to handle device renames
 	deviceID := device.GetDeviceID()
-	deviceName := device.Name // Default to passed device name
 	if pm.scanner != nil {
 		if currentDevice := pm.scanner.GetDeviceByID(deviceID); currentDevice != nil {
-			deviceName = currentDevice.Name
+			reading.DeviceName = currentDevice.Name
 		}
-	}
-
-	reading := &PowerReading{
-		DeviceID:   deviceID,
-		DeviceName: deviceName,
-		Timestamp:  time.Now(),
-		Power:      power,
-		Voltage:    voltage,
-		Current:    current,
-		Energy:     0, // Would need to track cumulative energy
 	}
 
 	logger.Debug().
@@ -288,13 +260,13 @@ func (pm *PowerMonitor) readPower(device *discovery.Device) (*PowerReading, erro
 		Float64("power_w", reading.Power).
 		Float64("voltage_v", reading.Voltage).
 		Float64("current_a", reading.Current).
-		Msg("Power reading")
+		Msg("Simulated power reading")
 
 	return reading, nil
 }
 
 // Readings returns the channel for receiving power readings
-func (pm *PowerMonitor) Readings() <-chan *PowerReading {
+func (pm *PowerMonitor) Readings() <-chan *interfaces.PowerReading {
 	return pm.readings
 }
 
@@ -320,6 +292,20 @@ func (pm *PowerMonitor) Stop() {
 	// Close the readings channel
 	close(pm.readings)
 	logger.Info().Msg("Power monitor stopped, readings channel closed")
+}
+
+// UpdatePollInterval updates the polling interval for all active and future device monitors.
+// The change will be picked up by each monitoring goroutine on its next tick.
+func (pm *PowerMonitor) UpdatePollInterval(newInterval time.Duration) {
+	pm.deviceMutex.Lock()
+	defer pm.deviceMutex.Unlock()
+
+	if pm.pollInterval == newInterval {
+		return
+	}
+
+	logger.Info().Dur("old_interval", pm.pollInterval).Dur("new_interval", newInterval).Msg("Updating power monitor poll interval")
+	pm.pollInterval = newInterval
 }
 
 // TODO: Implement actual Matter protocol communication

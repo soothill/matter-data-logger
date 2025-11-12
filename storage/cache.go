@@ -4,8 +4,8 @@
 // Package storage provides persistent storage for power consumption data with local caching.
 //
 // This package implements a two-tier storage architecture:
-//   1. Primary storage: InfluxDB time-series database
-//   2. Fallback storage: Local file-based cache
+//  1. Primary storage: InfluxDB time-series database
+//  2. Fallback storage: Local file-based cache
 //
 // The caching layer provides resilience against InfluxDB outages by automatically
 // falling back to local storage when the database is unavailable, then replaying
@@ -100,17 +100,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/soothill/matter-data-logger/monitoring"
+	"github.com/soothill/matter-data-logger/pkg/interfaces"
 	"github.com/soothill/matter-data-logger/pkg/logger"
 )
 
 const (
-	defaultCacheDir  = "/var/cache/matter-data-logger"
-	cacheFilePrefix  = "cache_"
-	cacheFileExt     = ".json"
-	defaultMaxSize   = 100 * 1024 * 1024 // 100 MB
-	defaultMaxAge    = 24 * time.Hour
-	replayBatchSize  = 100
+	defaultCacheDir     = "/var/cache/matter-data-logger"
+	cacheFilePrefix     = "cache_"
+	cacheFileExt        = ".json"
+	defaultMaxSize      = 100 * 1024 * 1024 // 100 MB
+	defaultMaxAge       = 24 * time.Hour
+	replayBatchSize     = 100
 	healthCheckInterval = 30 * time.Second
 )
 
@@ -125,7 +125,7 @@ type LocalCache struct {
 
 // CachedReading represents a power reading stored in cache
 type CachedReading struct {
-	Reading   *monitoring.PowerReading `json:"reading"`
+	Reading   *interfaces.PowerReading `json:"reading"`
 	CachedAt  time.Time                `json:"cached_at"`
 	AttemptID string                   `json:"attempt_id"`
 }
@@ -167,7 +167,7 @@ func NewLocalCache(cacheDir string, maxSize int64, maxAge time.Duration) (*Local
 }
 
 // Write writes a reading to the cache
-func (lc *LocalCache) Write(reading *monitoring.PowerReading) error {
+func (lc *LocalCache) Write(reading *interfaces.PowerReading) error {
 	lc.mu.Lock()
 	defer lc.mu.Unlock()
 
@@ -340,14 +340,15 @@ func (lc *LocalCache) generateFilename(attemptID string) string {
 
 // CachingStorage wraps InfluxDBStorage with local caching support
 type CachingStorage struct {
-	storage      *InfluxDBStorage
-	cache        *LocalCache
-	notifier     Notifier
-	ctx          context.Context
-	cancel       context.CancelFunc
-	replayWg     sync.WaitGroup
-	cacheEnabled bool
-	cacheMutex   sync.RWMutex
+	storage             interfaces.TimeSeriesStorage
+	cache               *LocalCache
+	notifier            Notifier
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	replayWg            sync.WaitGroup
+	cacheEnabled        bool
+	cacheMutex          sync.RWMutex
+	healthCheckInterval time.Duration
 }
 
 // Notifier defines the interface for sending notifications
@@ -359,16 +360,17 @@ type Notifier interface {
 }
 
 // NewCachingStorage creates a new caching storage wrapper
-func NewCachingStorage(storage *InfluxDBStorage, cache *LocalCache, notifier Notifier) *CachingStorage {
+func NewCachingStorage(storage interfaces.TimeSeriesStorage, cache *LocalCache, notifier Notifier) *CachingStorage {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	cs := &CachingStorage{
-		storage:      storage,
-		cache:        cache,
-		notifier:     notifier,
-		ctx:          ctx,
-		cancel:       cancel,
-		cacheEnabled: false,
+		storage:             storage,
+		cache:               cache,
+		notifier:            notifier,
+		ctx:                 ctx,
+		cancel:              cancel,
+		cacheEnabled:        false,
+		healthCheckInterval: healthCheckInterval,
 	}
 
 	// Start background health monitoring and replay goroutine
@@ -380,7 +382,7 @@ func NewCachingStorage(storage *InfluxDBStorage, cache *LocalCache, notifier Not
 
 // WriteReading writes a reading, falling back to cache if InfluxDB is unavailable
 // The context can be used for cancellation and timeout control
-func (cs *CachingStorage) WriteReading(ctx context.Context, reading *monitoring.PowerReading) error {
+func (cs *CachingStorage) WriteReading(ctx context.Context, reading *interfaces.PowerReading) error {
 	// Try to write to InfluxDB first
 	err := cs.storage.WriteReading(ctx, reading)
 	if err == nil {
@@ -426,7 +428,7 @@ func (cs *CachingStorage) WriteReading(ctx context.Context, reading *monitoring.
 
 // WriteBatch writes multiple readings
 // The context can be used for cancellation and timeout control
-func (cs *CachingStorage) WriteBatch(ctx context.Context, readings []*monitoring.PowerReading) error {
+func (cs *CachingStorage) WriteBatch(ctx context.Context, readings []*interfaces.PowerReading) error {
 	for i, reading := range readings {
 		if err := cs.WriteReading(ctx, reading); err != nil {
 			return fmt.Errorf("failed to write reading %d/%d (device_id=%s): %w", i+1, len(readings), reading.DeviceID, err)
@@ -462,7 +464,7 @@ func (cs *CachingStorage) Client() interface{} {
 func (cs *CachingStorage) monitorAndReplay() {
 	defer cs.replayWg.Done()
 
-	ticker := time.NewTicker(healthCheckInterval)
+	ticker := time.NewTicker(cs.healthCheckInterval)
 	defer ticker.Stop()
 
 	for {

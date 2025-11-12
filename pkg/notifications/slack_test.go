@@ -14,8 +14,8 @@ import (
 
 func TestNewSlackNotifier(t *testing.T) {
 	tests := []struct {
-		name       string
-		webhookURL string
+		name        string
+		webhookURL  string
 		wantEnabled bool
 	}{
 		{

@@ -23,16 +23,30 @@ This document tracks code improvement opportunities identified through comprehen
 
 ---
 
+## 🟠 HIGH PRIORITY (Newly Identified)
+
+### 1. Implement Actual Matter Protocol Communication
+- [ ] **File**: `monitoring/power.go`
+- [ ] **Issue**: The application currently simulates power readings instead of communicating with real Matter devices. This is a critical feature gap that prevents the logger from performing its primary function.
+- [ ] **Fix**: Replace the mock data generation with a proper Matter client implementation to read power consumption from discovered devices.
+
+### 2. Implement Dynamic Ticker Updates for Monitoring
+- [ ] **File**: `monitoring/power.go`
+- [ ] **Issue**: The monitoring interval is set when a device is first discovered, but there is no mechanism to update it if the configuration changes. This can lead to stale monitoring intervals and inconsistent data collection.
+- [ ] **Fix**: Implement a mechanism to signal `monitorDevice` goroutines to restart or update their tickers when the monitoring configuration is reloaded.
+
+---
+
 ## 🟢 LOW PRIORITY (Nice to Have)
 
-### 32. Add Integration Tests
+### 3. Add Integration Tests
 - [ ] **Issue**: Only unit tests exist, no end-to-end tests
 - [ ] **Fix**: Add integration tests using:
   - Testcontainers for InfluxDB
   - Mock mDNS server
   - Full startup/shutdown cycle
 
-### 33. Add Benchmark Tests
+### 4. Add Benchmark Tests
 - [ ] **Issue**: No performance benchmarks
 - [ ] **Fix**: Add benchmarks for:
   - Power reading generation
@@ -40,7 +54,7 @@ This document tracks code improvement opportunities identified through comprehen
   - Discovery parsing
   - Metrics updates
 
-### 34. Add Fuzz Tests
+### 5. Add Fuzz Tests
 - [ ] **Files**: `discovery/discovery.go`, `storage/influxdb.go`
 - [ ] **Issue**: No fuzzing for input parsing
 - [ ] **Fix**: Add Go 1.18+ fuzz tests for:
@@ -48,27 +62,27 @@ This document tracks code improvement opportunities identified through comprehen
   - Device ID generation
   - Flux query sanitization
 
-### 35. Add Error Path Testing
+### 6. Add Error Path Testing
 - [ ] **Issue**: Many error branches not tested
 - [ ] **Fix**: Add negative tests forcing error conditions
 
-### 36. Add Race Condition Stress Tests
+### 7. Add Race Condition Stress Tests
 - [ ] **Issue**: Concurrent access might have undiscovered races
 - [ ] **Fix**: Add stress tests with many goroutines
 
-### 37. Create Architecture Decision Records
+### 8. Create Architecture Decision Records
 - [ ] **Issue**: No documentation of design decisions
 - [ ] **Fix**: Document decisions like:
   - Why zeroconf library
   - Why async InfluxDB writes
   - Why channel-based architecture
 
-### 38. Generate Metrics Documentation
+### 9. Generate Metrics Documentation
 - [ ] **File**: `pkg/metrics/metrics.go`
 - [ ] **Issue**: Metrics not exported in structured way
 - [ ] **Fix**: Generate metrics docs for operators
 
-### 39. Expand Troubleshooting Guide
+### 10. Expand Troubleshooting Guide
 - [ ] **File**: `README.md`
 - [ ] **Issue**: Minimal troubleshooting section
 - [ ] **Fix**: Cover:
@@ -77,7 +91,7 @@ This document tracks code improvement opportunities identified through comprehen
   - Configuration errors
   - Device discovery verification
 
-### 40. Add Deployment Best Practices Docs
+### 11. Add Deployment Best Practices Docs
 - [ ] **Issue**: No production deployment guidance
 - [ ] **Fix**: Document:
   - Resource requirements
@@ -85,53 +99,53 @@ This document tracks code improvement opportunities identified through comprehen
   - Backup/restore
   - Meta-monitoring
 
-### 41. Add Extension Examples
+### 12. Add Extension Examples
 - [ ] **Issue**: No examples for extending the system
 - [ ] **Fix**: Add examples for:
   - New storage backends
   - Additional Matter clusters
   - Custom metrics
 
-### 42. Improve Complex Code Comments
+### 13. Improve Complex Code Comments
 - [ ] **File**: `discovery/discovery.go:86-98`
 - [ ] **Issue**: Complex concurrent code lacks detailed comments
 - [ ] **Fix**: Explain synchronization strategy
 
-### 43. Add Configuration Hot Reload
+### 14. Add Configuration Hot Reload
 - [ ] **File**: `config/config.go`
 - [ ] **Issue**: Requires restart for config changes
 - [ ] **Fix**: Add SIGHUP handler for reload
 
-### 44. Add Configuration Schema
+### 15. Add Configuration Schema
 - [ ] **Issue**: No JSON Schema for validation
 - [ ] **Fix**: Add schema file and validation
 
-### 45. Support Configuration Profiles
+### 16. Support Configuration Profiles
 - [ ] **Issue**: Single config, no dev/staging/prod profiles
 - [ ] **Fix**: Support multiple config files
 
-### 46. Add Observability Configuration
+### 17. Add Observability Configuration
 - [ ] **Issue**: Missing config for metrics interval, log format, tracing
 - [ ] **Fix**: Add observability config section
 
-### 47. Add Resource Limits Configuration
+### 18. Add Resource Limits Configuration
 - [ ] **Issue**: No limits for max devices, buffer sizes, batch sizes
 - [ ] **Fix**: Add resource limits config
 
-### 48. Extract Business Logic from Main
+### 19. Extract Business Logic from Main
 - [ ] **File**: `main.go:147-206`
 - [ ] **Issue**: Discovery logic in main function
 - [ ] **Fix**: Extract to application/service layer
 
-### 49. Add Graceful Degradation
+### 20. Add Graceful Degradation
 - [ ] **Issue**: InfluxDB down = silent data loss
 - [ ] **Fix**: Add fallback storage or fail loudly
 
-### 50. Enhance Metrics Help Text
+### 21. Enhance Metrics Help Text
 - [ ] **File**: `pkg/metrics/metrics.go`
 - [ ] **Fix**: Add units and examples to help text
 
-### 51. Define Structured Error Types
+### 22. Define Structured Error Types
 - [ ] **Issue**: Errors are strings, not types
 - [ ] **Fix**: Define error types:
   ```go
@@ -145,40 +159,40 @@ This document tracks code improvement opportunities identified through comprehen
 
 ## 🌟 FEATURE ENHANCEMENTS
 
-### 52. Add Alerting System
+### 23. Add Alerting System
 - [ ] **Description**: No alerts when devices offline or readings anomalous
 - [ ] **Fix**: Integrate with Alertmanager or add webhook system
 
-### 53. Add Device Discovery Events
+### 24. Add Device Discovery Events
 - [ ] **Description**: No notification when devices appear/disappear
 - [ ] **Fix**: Add event system or webhooks
 
-### 54. Add Historical Data Export
+### 25. Add Historical Data Export
 - [ ] **Description**: No export/backup functionality
 - [ ] **Fix**: Add CLI command or API for data export
 
-### 55. Add Device Metadata Persistence
+### 26. Add Device Metadata Persistence
 - [ ] **Description**: Device names, locations lost on restart
 - [ ] **Fix**: Persist metadata (JSON file or database)
 
-### 56. Add Resource Limit Enforcement
+### 27. Add Resource Limit Enforcement
 - [ ] **Description**: No limits on goroutines, memory, file descriptors
 - [ ] **Fix**: Add resource monitoring and limits
 
-### 57. Add Discovery Fallback Mode
+### 28. Add Discovery Fallback Mode
 - [ ] **Description**: mDNS failure prevents startup
 - [ ] **Fix**: Allow running without discovery for testing
 
-### 58. Add Debug Signal Handlers
+### 29. Add Debug Signal Handlers
 - [ ] **Description**: No SIGUSR1/SIGUSR2 for debugging
 - [ ] **Fix**: Add handlers to dump goroutines, device state
 
-### 59. Add Docker Secrets Support
+### 30. Add Docker Secrets Support
 - [ ] **File**: `docker-compose.yml`
 - [ ] **Issue**: Uses environment variables in compose
 - [ ] **Fix**: Use Docker secrets or external secret management
 
-### 60. Add Incremental Discovery
+### 31. Add Incremental Discovery
 - [ ] **File**: `discovery/discovery.go`
 - [ ] **Issue**: Full network scan every time
 - [ ] **Fix**: Support continuous/incremental discovery
@@ -203,38 +217,14 @@ This document tracks code improvement opportunities identified through comprehen
 
 ## Completion Tracking
 
-- Total Remaining Items: 30
-- **Medium Priority** (🟡): 0 items remaining
-- **Low Priority** (🟢): 22 items
+- Total Remaining Items: 31
+- **High Priority** (🟠): 2 items
+- **Low Priority** (🟢): 21 items
 - **Feature Enhancements** (🌟): 8 items
 
-### Completed Work Summary:
+### Previously Completed Work Summary:
 - **Critical Priority** (🔴): 5/5 completed (100%) ✅
 - **High Priority** (🟠): 14/14 completed (100%) ✅
-- **Medium Priority** (🟡): 16/16 completed (100%) ✅ **ALL MEDIUM PRIORITY COMPLETE!**
+- **Medium Priority** (🟡): 16/16 completed (100%) ✅
 
-All critical, high, and medium priority tasks have been completed! The codebase now has:
-- ✅ No security vulnerabilities
-- ✅ Comprehensive test coverage (67% overall)
-- ✅ Circuit breakers and rate limiting
-- ✅ Graceful shutdown and error handling
-- ✅ Production-ready configuration and validation
-- ✅ Comprehensive package documentation for all packages
-
-For details on completed items, see git history with commits from `968cb22` onwards.
-
----
-
-## Notes
-
-This TODO list tracks remaining improvements for the Matter Power Data Logger codebase.
-
-**Last Updated**: 2025-11-11
-
-The codebase is production-ready with all critical and high-priority items addressed. The remaining items are enhancements and nice-to-have features that can be implemented as needed.
-
-**Recommended Approach**:
-1. ✅ ~~All 🔴 CRITICAL items~~ (COMPLETED - 100%!)
-2. ✅ ~~All 🟠 HIGH priority items~~ (COMPLETED - 100%!)
-3. ✅ ~~All 🟡 MEDIUM priority items~~ (COMPLETED - 100%! 🎉)
-4. Consider 🟢 LOW and 🌟 FEATURE items as time permits
+All original critical, high, and medium priority tasks have been completed. The codebase is considered production-ready, and the remaining items focus on implementing core functionality (Matter communication) and further enhancements.

