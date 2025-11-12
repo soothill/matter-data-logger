@@ -30,6 +30,9 @@ func (c *MatterClient) ReadPower() (*interfaces.PowerReading, error) {
 	// TODO: Replace this with a real Matter client implementation.
 	// The following code is for simulation purposes only.
 
+	// Simulate network latency and device response time
+	time.Sleep(time.Duration(50+rand.Intn(200)) * time.Millisecond)
+
 	baseLoad := simulatedBaseLoadMin + rand.Float64()*simulatedLoadRange
 	variation := (rand.Float64() - 0.5) * simulatedVariation
 	power := baseLoad + variation
