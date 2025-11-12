@@ -14,10 +14,16 @@ import (
 	"time"
 
 	"github.com/soothill/matter-data-logger/pkg/interfaces"
+	"github.com/soothill/matter-data-logger/pkg/logger"
 )
+
+func init() {
+	logger.Initialize("debug")
+}
 
 // mockTimeSeriesStorage is a mock implementation of interfaces.TimeSeriesStorage
 type mockTimeSeriesStorage struct {
+	mu               sync.Mutex
 	writeReadingFunc func(ctx context.Context, reading *interfaces.PowerReading) error
 	writeBatchFunc   func(ctx context.Context, readings []*interfaces.PowerReading) error
 	flushFunc        func()
@@ -28,30 +34,44 @@ type mockTimeSeriesStorage struct {
 }
 
 func (m *mockTimeSeriesStorage) WriteReading(ctx context.Context, reading *interfaces.PowerReading) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.writeReadingFunc(ctx, reading)
 }
 
 func (m *mockTimeSeriesStorage) WriteBatch(ctx context.Context, readings []*interfaces.PowerReading) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.writeBatchFunc(ctx, readings)
 }
 
 func (m *mockTimeSeriesStorage) Flush() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.flushFunc()
 }
 
 func (m *mockTimeSeriesStorage) Close() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.closeFunc()
 }
 
 func (m *mockTimeSeriesStorage) Health(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.healthFunc(ctx)
 }
 
 func (m *mockTimeSeriesStorage) QueryLatestReading(ctx context.Context, deviceID string) (*interfaces.PowerReading, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.queryFunc(ctx, deviceID)
 }
 
 func (m *mockTimeSeriesStorage) Client() interface{} {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.clientFunc()
 }
 
@@ -61,6 +81,13 @@ type mockNotifier struct {
 	influxFailureCalled  bool
 	influxRecoveryCalled bool
 	cacheWarningCalled   bool
+	recoveryChan         chan struct{}
+}
+
+func newMockNotifier() *mockNotifier {
+	return &mockNotifier{
+		recoveryChan: make(chan struct{}, 1),
+	}
 }
 
 func (m *mockNotifier) SendInfluxDBFailure(_ context.Context, _ error) error {
@@ -74,6 +101,7 @@ func (m *mockNotifier) SendInfluxDBRecovery(_ context.Context) error {
 	m.mu.Lock()
 	m.influxRecoveryCalled = true
 	m.mu.Unlock()
+	m.recoveryChan <- struct{}{}
 	return nil
 }
 
@@ -360,7 +388,7 @@ func TestCachingStorage_WriteReading_Success(t *testing.T) {
 	}
 
 	// Mock notifier
-	mockNotif := &mockNotifier{}
+	mockNotif := newMockNotifier()
 
 	cs := NewCachingStorage(mockDB, cache, mockNotif)
 	defer cs.Close()
@@ -444,26 +472,27 @@ func TestCachingStorage_WriteReading_CacheFallback(t *testing.T) {
 	}
 
 	// Simulate InfluxDB recovery and replay
-	mockDB.healthFunc = func(_ context.Context) error { return nil }
-	mockDB.writeReadingFunc = func(_ context.Context, _ *interfaces.PowerReading) error { return nil }
-
-	// Simulate InfluxDB recovery and replay
 	var replayWg sync.WaitGroup
 	replayWg.Add(1)
-	var recoveryOnce sync.Once
 
-	mockDB.healthFunc = func(_ context.Context) error {
-		recoveryOnce.Do(func() {
-			mockDB.writeReadingFunc = func(_ context.Context, _ *interfaces.PowerReading) error {
-				defer replayWg.Done()
-				return nil
-			}
-		})
+	mockDB.mu.Lock()
+	mockDB.healthFunc = func(_ context.Context) error { return nil }
+	mockDB.writeReadingFunc = func(_ context.Context, _ *interfaces.PowerReading) error {
+		defer replayWg.Done()
 		return nil
 	}
+	mockDB.mu.Unlock()
 
 	// Wait for the replay to complete
 	replayWg.Wait()
+
+	// Wait for the recovery notification
+	select {
+	case <-mockNotif.recoveryChan:
+		// notification received
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for recovery notification")
+	}
 
 	// Ensure cache is empty after replay
 	files, _ = filepath.Glob(filepath.Join(tempDir, "cache_*"+".json"))
@@ -472,9 +501,11 @@ func TestCachingStorage_WriteReading_CacheFallback(t *testing.T) {
 	}
 
 	// Ensure InfluxDB recovery notification was sent
+	mockNotif.mu.Lock()
 	if !mockNotif.influxRecoveryCalled {
 		t.Error("Expected InfluxDB recovery notification to be sent")
 	}
+	mockNotif.mu.Unlock()
 }
 
 // triggerReplay is a test helper to manually trigger the replay logic
@@ -547,7 +578,7 @@ func TestCachingStorage_WriteReading_CacheFull(t *testing.T) {
 	}
 
 	// Mock notifier
-	mockNotif := &mockNotifier{}
+	mockNotif := newMockNotifier()
 
 	cs := NewCachingStorage(mockDB, cache, mockNotif)
 	defer cs.Close()
@@ -596,7 +627,7 @@ func TestCachingStorage_CacheWarning(t *testing.T) {
 	}
 
 	// Mock notifier
-	mockNotif := &mockNotifier{}
+	mockNotif := newMockNotifier()
 
 	cs := NewCachingStorage(mockDB, cache, mockNotif)
 	defer cs.Close()
@@ -642,7 +673,7 @@ func TestCachingStorage_Close(t *testing.T) {
 		t.Fatalf("Failed to create cache: %v", err)
 	}
 
-	cs := NewCachingStorage(mockDB, cache, &mockNotifier{})
+	cs := NewCachingStorage(mockDB, cache, newMockNotifier())
 
 	cs.Close()
 
@@ -673,7 +704,7 @@ func TestCachingStorage_Health(t *testing.T) {
 		t.Fatalf("Failed to create cache: %v", err)
 	}
 
-	cs := NewCachingStorage(mockDB, cache, &mockNotifier{})
+	cs := NewCachingStorage(mockDB, cache, newMockNotifier())
 	defer cs.Close()
 
 	err = cs.Health(context.Background())
@@ -710,7 +741,7 @@ func TestCachingStorage_Client(t *testing.T) {
 		t.Fatalf("Failed to create cache: %v", err)
 	}
 
-	cs := NewCachingStorage(mockDB, cache, &mockNotifier{})
+	cs := NewCachingStorage(mockDB, cache, newMockNotifier())
 	defer cs.Close()
 
 	client := cs.Client()
@@ -738,7 +769,7 @@ func TestCachingStorage_WriteBatch(t *testing.T) {
 		t.Fatalf("Failed to create cache: %v", err)
 	}
 
-	cs := NewCachingStorage(mockDB, cache, &mockNotifier{})
+	cs := NewCachingStorage(mockDB, cache, newMockNotifier())
 	defer cs.Close()
 
 	readings := []*interfaces.PowerReading{
@@ -792,7 +823,7 @@ func TestCachingStorage_WriteBatch_Fallback(t *testing.T) {
 	}
 
 	// Mock notifier
-	mockNotif := &mockNotifier{}
+	mockNotif := newMockNotifier()
 
 	cs := NewCachingStorage(mockDB, cache, mockNotif)
 	defer cs.Close()
