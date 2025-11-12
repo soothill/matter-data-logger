@@ -98,6 +98,7 @@ type PowerMonitor struct {
 	wg               sync.WaitGroup
 	stopped          bool
 	scanner          DeviceScanner
+	configUpdate     chan struct{}
 }
 
 // NewPowerMonitor creates a new power monitor
@@ -107,6 +108,7 @@ func NewPowerMonitor(pollInterval time.Duration, scanner DeviceScanner, channelS
 		readings:         make(chan *interfaces.PowerReading, channelSize),
 		monitoredDevices: make(map[string]context.CancelFunc),
 		scanner:          scanner,
+		configUpdate:     make(chan struct{}),
 	}
 }
 
@@ -224,8 +226,7 @@ func (pm *PowerMonitor) monitorDevice(ctx context.Context, device *discovery.Dev
 				logger.Warn().Str("device_id", deviceID).Str("device_name", device.Name).
 					Msg("Readings channel full, dropping reading")
 			}
-
-			// After reading, check if the interval has changed and reset the ticker
+		case <-pm.configUpdate:
 			pm.deviceMutex.RLock()
 			if pm.pollInterval != currentInterval {
 				currentInterval = pm.pollInterval
@@ -306,6 +307,8 @@ func (pm *PowerMonitor) UpdatePollInterval(newInterval time.Duration) {
 
 	logger.Info().Dur("old_interval", pm.pollInterval).Dur("new_interval", newInterval).Msg("Updating power monitor poll interval")
 	pm.pollInterval = newInterval
+	close(pm.configUpdate)
+	pm.configUpdate = make(chan struct{})
 }
 
 // TODO: Implement actual Matter protocol communication

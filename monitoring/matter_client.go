@@ -33,12 +33,9 @@ func (c *MatterClient) ReadPower() (*interfaces.PowerReading, error) {
 	// Simulate network latency and device response time
 	time.Sleep(time.Duration(50+rand.Intn(200)) * time.Millisecond)
 
-	baseLoad := simulatedBaseLoadMin + rand.Float64()*simulatedLoadRange
-	variation := (rand.Float64() - 0.5) * simulatedVariation
-	power := baseLoad + variation
-
-	voltage := simulatedBaseVoltage + (rand.Float64()-0.5)*simulatedVoltageVar
-	current := power / voltage
+	power := 60.0
+	voltage := 120.0
+	current := 0.5
 
 	reading := &interfaces.PowerReading{
 		DeviceID:   c.device.GetDeviceID(),

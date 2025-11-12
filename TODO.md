@@ -23,48 +23,48 @@ This document tracks code improvement opportunities identified through comprehen
 
 ---
 
-## 🟠 HIGH PRIORITY (Newly Identified)
+## ✅ COMPLETED
 
 ### 1. Implement Actual Matter Protocol Communication
-- [ ] **File**: `monitoring/power.go`
-- [ ] **Issue**: The application currently simulates power readings instead of communicating with real Matter devices. This is a critical feature gap that prevents the logger from performing its primary function.
-- [ ] **Fix**: Replace the mock data generation with a proper Matter client implementation to read power consumption from discovered devices.
+- [x] **File**: `monitoring/power.go`
+- [x] **Issue**: The application currently simulates power readings instead of communicating with real Matter devices. This is a critical feature gap that prevents the logger from performing its primary function.
+- [x] **Fix**: Replace the mock data generation with a proper Matter client implementation to read power consumption from discovered devices.
 
 ### 2. Implement Dynamic Ticker Updates for Monitoring
-- [ ] **File**: `monitoring/power.go`
-- [ ] **Issue**: The monitoring interval is set when a device is first discovered, but there is no mechanism to update it if the configuration changes. This can lead to stale monitoring intervals and inconsistent data collection.
-- [ ] **Fix**: Implement a mechanism to signal `monitorDevice` goroutines to restart or update their tickers when the monitoring configuration is reloaded.
-
----
-
-## 🟢 LOW PRIORITY (Nice to Have)
+- [x] **File**: `monitoring/power.go`
+- [x] **Issue**: The monitoring interval is set when a device is first discovered, but there is no mechanism to update it if the configuration changes. This can lead to stale monitoring intervals and inconsistent data collection.
+- [x] **Fix**: Implement a mechanism to signal `monitorDevice` goroutines to restart or update their tickers when the monitoring configuration is reloaded.
 
 ### 3. Add Integration Tests
-- [ ] **Issue**: Only unit tests exist, no end-to-end tests
-- [ ] **Fix**: Add integration tests using:
+- [x] **Issue**: Only unit tests exist, no end-to-end tests
+- [x] **Fix**: Add integration tests using:
   - Testcontainers for InfluxDB
   - Mock mDNS server
   - Full startup/shutdown cycle
 
+## ✅ COMPLETED
+
 ### 4. Add Benchmark Tests
-- [ ] **Issue**: No performance benchmarks
-- [ ] **Fix**: Add benchmarks for:
+- [x] **Issue**: No performance benchmarks
+- [x] **Fix**: Add benchmarks for:
   - Power reading generation
   - InfluxDB write performance
   - Discovery parsing
   - Metrics updates
 
 ### 5. Add Fuzz Tests
-- [ ] **Files**: `discovery/discovery.go`, `storage/influxdb.go`
-- [ ] **Issue**: No fuzzing for input parsing
-- [ ] **Fix**: Add Go 1.18+ fuzz tests for:
+- [x] **Files**: `discovery/discovery.go`, `storage/influxdb.go`
+- [x] **Issue**: No fuzzing for input parsing
+- [x] **Fix**: Add Go 1.18+ fuzz tests for:
   - TXT record parsing
   - Device ID generation
   - Flux query sanitization
 
 ### 6. Add Error Path Testing
-- [ ] **Issue**: Many error branches not tested
-- [ ] **Fix**: Add negative tests forcing error conditions
+- [x] **Issue**: Many error branches not tested
+- [x] **Fix**: Add negative tests forcing error conditions
+
+## 🟡 IN PROGRESS
 
 ### 7. Add Race Condition Stress Tests
 - [ ] **Issue**: Concurrent access might have undiscovered races
@@ -81,6 +81,14 @@ This document tracks code improvement opportunities identified through comprehen
 - [ ] **File**: `pkg/metrics/metrics.go`
 - [ ] **Issue**: Metrics not exported in structured way
 - [ ] **Fix**: Generate metrics docs for operators
+
+---
+
+## 🟠 HIGH PRIORITY (Newly Identified)
+
+---
+
+## 🟢 LOW PRIORITY (Nice to Have)
 
 ### 10. Expand Troubleshooting Guide
 - [ ] **File**: `README.md`

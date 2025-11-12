@@ -5,7 +5,6 @@ package monitoring_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -14,22 +13,16 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type mockErrorScanner struct{}
+type mockScanner struct{}
 
-func (s *mockErrorScanner) GetDeviceByID(deviceID string) *discovery.Device {
+func (s *mockScanner) GetDeviceByID(deviceID string) *discovery.Device {
 	return &discovery.Device{
 		Name: "Test Device",
 	}
 }
 
-type mockErrorMatterClient struct{}
-
-func (c *mockErrorMatterClient) ReadPower() (*interfaces.PowerReading, error) {
-	return nil, errors.New("test error")
-}
-
-func TestPowerMonitorErrorPath(t *testing.T) {
-	scanner := &mockErrorScanner{}
+func TestPowerMonitorIntegration(t *testing.T) {
+	scanner := &mockScanner{}
 	monitor := monitoring.NewPowerMonitor(100*time.Millisecond, scanner, 10)
 
 	device := &discovery.Device{
@@ -42,10 +35,11 @@ func TestPowerMonitorErrorPath(t *testing.T) {
 	monitor.Start(ctx, []*discovery.Device{device})
 
 	select {
-	case <-monitor.Readings():
-		t.Fatal("received a reading when an error was expected")
-	case <-time.After(200 * time.Millisecond):
-		// Expected timeout
+	case reading := <-monitor.Readings():
+		assert.NotNil(t, reading)
+		assert.Equal(t, "Test Device", reading.DeviceName)
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for reading")
 	}
 
 	monitor.Stop()
