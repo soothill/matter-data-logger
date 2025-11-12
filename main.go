@@ -23,6 +23,7 @@ import (
 	"github.com/soothill/matter-data-logger/pkg/logger"
 	"github.com/soothill/matter-data-logger/pkg/metrics"
 	"github.com/soothill/matter-data-logger/pkg/notifications"
+	"github.com/soothill/matter-data-logger/pkg/slacknotifier"
 	"github.com/soothill/matter-data-logger/storage"
 	"golang.org/x/time/rate"
 )
@@ -45,7 +46,7 @@ type App struct {
 	scanner       *discovery.Scanner
 	db            *storage.CachingStorage
 	influxDB      interfaces.TimeSeriesStorage // Changed to interface
-	notifier      *notifications.SlackNotifier
+	notifier      *slacknotifier.Notifier
 	configWatcher *config.Watcher
 	wg            sync.WaitGroup
 	ctx           context.Context
@@ -135,16 +136,17 @@ func (a *App) Run(configChan <-chan *config.Config) {
 }
 
 // initializeComponents initializes all application components
-func (a *App) initializeComponents() (*notifications.SlackNotifier, *storage.CachingStorage, interfaces.TimeSeriesStorage, *http.Server, error) {
+func (a *App) initializeComponents() (*slacknotifier.Notifier, *storage.CachingStorage, interfaces.TimeSeriesStorage, *http.Server, error) {
 	var err error
 
 	// Initialize Slack notifier
-	notifier := notifications.NewSlackNotifier(a.cfg.Notifications.SlackWebhookURL)
+	notifier := slacknotifier.New(a.cfg.Notifications.SlackWebhookURL)
 	if notifier.IsEnabled() {
 		logger.Info().Msg("Slack notifications enabled")
 	} else {
 		logger.Info().Msg("Slack notifications disabled (no webhook URL configured)")
 	}
+	notifierAdapter := notifications.NewSlackNotifierAdapter(notifier)
 
 	// Initialize InfluxDB storage
 	var influxDB *storage.InfluxDBStorage
@@ -175,7 +177,7 @@ func (a *App) initializeComponents() (*notifications.SlackNotifier, *storage.Cac
 		Msg("Local cache initialized")
 
 	// Wrap InfluxDB storage with caching layer
-	db := storage.NewCachingStorage(influxDB, cache, notifier)
+	db := storage.NewCachingStorage(influxDB, cache, notifierAdapter)
 
 	// Create rate limiters for health endpoints
 	healthLimiter := rate.NewLimiter(10, 20)
@@ -343,7 +345,7 @@ func (a *App) DiscoverAndMonitor(ctx context.Context) {
 		if a.notifier != nil && a.notifier.IsEnabled() {
 			alertCtx, alertCancel := context.WithTimeout(context.Background(), alertContextTimeout)
 			defer alertCancel()
-			if notifyErr := a.notifier.SendDiscoveryFailure(alertCtx, discoverErr); notifyErr != nil {
+			if notifyErr := sendDiscoveryFailure(alertCtx, a.notifier, discoverErr); notifyErr != nil {
 				logger.Error().Err(notifyErr).Msg("Failed to send discovery failure alert")
 			}
 		}
@@ -556,4 +558,9 @@ func performConfigValidation(configPath string) int {
 
 	fmt.Println("\nAll validation checks passed. Configuration is ready for use.")
 	return 0
+}
+
+func sendDiscoveryFailure(ctx context.Context, notifier *slacknotifier.Notifier, err error) error {
+	return notifier.SendAlert(ctx, "warning", "⚠️ Device Discovery Failure",
+		fmt.Sprintf("Failed to discover Matter devices: %v", err))
 }
