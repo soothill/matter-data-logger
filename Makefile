@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Darren Soothill
+ # Copyright (c) 2025 Darren Soothill
 # Licensed under the MIT License
 
 .PHONY: help build test test-integration test-integration-coverage clean run docker-build docker-run lint fmt vet tidy install-tools
@@ -25,7 +25,7 @@ help: ## Show this help message
 build: ## Build the application
 	@echo "Building $(BINARY_NAME) for $(GOOS)/$(GOARCH)..."
 	@mkdir -p $(BUILD_DIR)
-	@CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) .
+	@GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) .
 	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)"
 
 build-all: ## Build for multiple platforms
