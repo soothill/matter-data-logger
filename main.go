@@ -20,8 +20,21 @@ import (
 	"github.com/soothill/matter-data-logger/discovery"
 	"github.com/soothill/matter-data-logger/monitoring"
 	"github.com/soothill/matter-data-logger/pkg/interfaces"
+	"github.com/soothill/matter-data-logger/pkg/notifications"
+>>>>>>> origin/refactor/extract-slack-notifier
+	"github.com/soothill/matter-data-logger/pkg/slacknotifier"
+	"github.com/soothill/matter-data-logger/storage"
+	"golang.org/x/time/rate"
+)
 	"github.com/soothill/matter-data-logger/pkg/logger"
 	"github.com/soothill/matter-data-logger/pkg/metrics"
+	"github.com/soothill/matter-data-logger/pkg/slacknotifier"
+	"github.com/soothill/matter-data-logger/storage"
+	"golang.org/x/time/rate"
+)
+=======
+	"github.com/soothill/matter-data-logger/pkg/notifications"
+>>>>>>> origin/refactor/extract-slack-notifier
 	"github.com/soothill/matter-data-logger/pkg/slacknotifier"
 	"github.com/soothill/matter-data-logger/storage"
 	"golang.org/x/time/rate"
@@ -145,6 +158,7 @@ func (a *App) initializeComponents() (*slacknotifier.Notifier, *storage.CachingS
 	} else {
 		logger.Info().Msg("Slack notifications disabled (no webhook URL configured)")
 	}
+	notifierAdapter := slacknotifier.NewSlackNotifierAdapter(notifier)
 
 	// Initialize InfluxDB storage
 	var influxDB *storage.InfluxDBStorage
@@ -175,7 +189,7 @@ func (a *App) initializeComponents() (*slacknotifier.Notifier, *storage.CachingS
 		Msg("Local cache initialized")
 
 	// Wrap InfluxDB storage with caching layer
-	db := storage.NewCachingStorage(influxDB, cache, notifier)
+	db := storage.NewCachingStorage(influxDB, cache, notifierAdapter)
 
 	// Create rate limiters for health endpoints
 	healthLimiter := rate.NewLimiter(10, 20)
