@@ -1,18 +1,17 @@
 // Copyright (c) 2025 Darren Soothill
 // Licensed under the MIT License
 
-package notifications
+package slacknotifier
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 )
 
-func TestNewSlackNotifier(t *testing.T) {
+func TestNew(t *testing.T) {
 	tests := []struct {
 		name        string
 		webhookURL  string
@@ -32,7 +31,7 @@ func TestNewSlackNotifier(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			notifier := NewSlackNotifier(tt.webhookURL)
+			notifier := New(tt.webhookURL)
 			if notifier.IsEnabled() != tt.wantEnabled {
 				t.Errorf("IsEnabled() = %v, want %v", notifier.IsEnabled(), tt.wantEnabled)
 			}
@@ -40,7 +39,7 @@ func TestNewSlackNotifier(t *testing.T) {
 	}
 }
 
-func TestSlackNotifier_SendMessage(t *testing.T) {
+func TestNotifier_SendMessage(t *testing.T) {
 	// Create a test server
 	called := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +54,7 @@ func TestSlackNotifier_SendMessage(t *testing.T) {
 	}))
 	defer server.Close()
 
-	notifier := NewSlackNotifier(server.URL)
+	notifier := New(server.URL)
 	ctx := context.Background()
 
 	err := notifier.SendMessage(ctx, "Test message")
@@ -68,8 +67,8 @@ func TestSlackNotifier_SendMessage(t *testing.T) {
 	}
 }
 
-func TestSlackNotifier_SendMessage_Disabled(t *testing.T) {
-	notifier := NewSlackNotifier("")
+func TestNotifier_SendMessage_Disabled(t *testing.T) {
+	notifier := New("")
 	ctx := context.Background()
 
 	// Should not error when disabled
@@ -79,7 +78,7 @@ func TestSlackNotifier_SendMessage_Disabled(t *testing.T) {
 	}
 }
 
-func TestSlackNotifier_SendAlert(t *testing.T) {
+func TestNotifier_SendAlert(t *testing.T) {
 	tests := []struct {
 		name     string
 		severity string
@@ -113,7 +112,7 @@ func TestSlackNotifier_SendAlert(t *testing.T) {
 			}))
 			defer server.Close()
 
-			notifier := NewSlackNotifier(server.URL)
+			notifier := New(server.URL)
 			ctx := context.Background()
 
 			err := notifier.SendAlert(ctx, tt.severity, tt.title, tt.message)
@@ -124,73 +123,13 @@ func TestSlackNotifier_SendAlert(t *testing.T) {
 	}
 }
 
-func TestSlackNotifier_SendInfluxDBFailure(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	notifier := NewSlackNotifier(server.URL)
-	ctx := context.Background()
-
-	err := notifier.SendInfluxDBFailure(ctx, fmt.Errorf("connection timeout"))
-	if err != nil {
-		t.Errorf("SendInfluxDBFailure() error = %v", err)
-	}
-}
-
-func TestSlackNotifier_SendInfluxDBRecovery(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	notifier := NewSlackNotifier(server.URL)
-	ctx := context.Background()
-
-	err := notifier.SendInfluxDBRecovery(ctx)
-	if err != nil {
-		t.Errorf("SendInfluxDBRecovery() error = %v", err)
-	}
-}
-
-func TestSlackNotifier_SendCacheWarning(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	notifier := NewSlackNotifier(server.URL)
-	ctx := context.Background()
-
-	err := notifier.SendCacheWarning(ctx, 8*1024*1024, 10*1024*1024)
-	if err != nil {
-		t.Errorf("SendCacheWarning() error = %v", err)
-	}
-}
-
-func TestSlackNotifier_SendDiscoveryFailure(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	notifier := NewSlackNotifier(server.URL)
-	ctx := context.Background()
-
-	err := notifier.SendDiscoveryFailure(ctx, fmt.Errorf("no devices found"))
-	if err != nil {
-		t.Errorf("SendDiscoveryFailure() error = %v", err)
-	}
-}
-
-func TestSlackNotifier_ServerError(t *testing.T) {
+func TestNotifier_ServerError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
 
-	notifier := NewSlackNotifier(server.URL)
+	notifier := New(server.URL)
 	ctx := context.Background()
 
 	err := notifier.SendMessage(ctx, "Test message")
@@ -199,13 +138,13 @@ func TestSlackNotifier_ServerError(t *testing.T) {
 	}
 }
 
-func TestSlackNotifier_Timeout(t *testing.T) {
+func TestNotifier_Timeout(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		time.Sleep(15 * time.Second) // Longer than client timeout
 	}))
 	defer server.Close()
 
-	notifier := NewSlackNotifier(server.URL)
+	notifier := New(server.URL)
 	ctx := context.Background()
 
 	err := notifier.SendMessage(ctx, "Test message")
@@ -214,9 +153,7 @@ func TestSlackNotifier_Timeout(t *testing.T) {
 	}
 }
 
-func TestSlackNotifier_SeverityToColor(t *testing.T) {
-	notifier := NewSlackNotifier("https://example.com")
-
+func TestSeverityToColor(t *testing.T) {
 	tests := []struct {
 		severity string
 		want     string
@@ -233,7 +170,7 @@ func TestSlackNotifier_SeverityToColor(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.severity, func(t *testing.T) {
-			got := notifier.severityToColor(tt.severity)
+			got := severityToColor(tt.severity)
 			if got != tt.want {
 				t.Errorf("severityToColor(%q) = %q, want %q", tt.severity, got, tt.want)
 			}
