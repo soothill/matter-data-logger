@@ -20,21 +20,9 @@ import (
 	"github.com/soothill/matter-data-logger/discovery"
 	"github.com/soothill/matter-data-logger/monitoring"
 	"github.com/soothill/matter-data-logger/pkg/interfaces"
-	"github.com/soothill/matter-data-logger/pkg/notifications"
->>>>>>> origin/refactor/extract-slack-notifier
-	"github.com/soothill/matter-data-logger/pkg/slacknotifier"
-	"github.com/soothill/matter-data-logger/storage"
-	"golang.org/x/time/rate"
-)
 	"github.com/soothill/matter-data-logger/pkg/logger"
 	"github.com/soothill/matter-data-logger/pkg/metrics"
-	"github.com/soothill/matter-data-logger/pkg/slacknotifier"
-	"github.com/soothill/matter-data-logger/storage"
-	"golang.org/x/time/rate"
-)
-=======
 	"github.com/soothill/matter-data-logger/pkg/notifications"
->>>>>>> origin/refactor/extract-slack-notifier
 	"github.com/soothill/matter-data-logger/pkg/slacknotifier"
 	"github.com/soothill/matter-data-logger/storage"
 	"golang.org/x/time/rate"
