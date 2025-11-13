@@ -4,7 +4,9 @@
 package monitoring
 
 import (
-	"math/rand"
+	"crypto/rand"
+	"log"
+	"math/big"
 	"time"
 
 	"github.com/soothill/matter-data-logger/discovery"
@@ -31,7 +33,14 @@ func (c *MatterClient) ReadPower() (*interfaces.PowerReading, error) {
 	// The following code is for simulation purposes only.
 
 	// Simulate network latency and device response time
-	time.Sleep(time.Duration(50+rand.Intn(200)) * time.Millisecond)
+	n, err := rand.Int(rand.Reader, big.NewInt(200))
+	if err != nil {
+		log.Printf("could not generate random number: %v", err)
+		// Fallback to a fixed sleep time if crypto/rand fails
+		time.Sleep(150 * time.Millisecond)
+	} else {
+		time.Sleep(time.Duration(50+n.Int64()) * time.Millisecond)
+	}
 
 	power := 60.0
 	voltage := 120.0

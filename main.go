@@ -191,8 +191,9 @@ func (a *App) initializeComponents() (*slacknotifier.Notifier, *storage.CachingS
 	}))
 
 	server := &http.Server{
-		Addr:    "localhost:" + a.metricsPort,
-		Handler: mux,
+		Addr:              "localhost:" + a.metricsPort,
+		Handler:           mux,
+		ReadHeaderTimeout: 20 * time.Second,
 	}
 
 	return notifier, db, influxDB, server, nil

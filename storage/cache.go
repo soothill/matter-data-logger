@@ -102,6 +102,7 @@ import (
 
 	"github.com/soothill/matter-data-logger/pkg/interfaces"
 	"github.com/soothill/matter-data-logger/pkg/logger"
+	"github.com/soothill/matter-data-logger/pkg/util"
 )
 
 const (
@@ -143,7 +144,7 @@ func NewLocalCache(cacheDir string, maxSize int64, maxAge time.Duration) (*Local
 	}
 
 	// Create cache directory if it doesn't exist
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+	if err := os.MkdirAll(cacheDir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
@@ -188,7 +189,7 @@ func (lc *LocalCache) Write(reading *interfaces.PowerReading) error {
 		return fmt.Errorf("failed to marshal reading: %w", err)
 	}
 
-	if err := os.WriteFile(filename, data, 0644); err != nil {
+	if err := os.WriteFile(filename, data, 0600); err != nil {
 		return fmt.Errorf("failed to write cache file: %w", err)
 	}
 
@@ -214,7 +215,7 @@ func (lc *LocalCache) ListCachedReadings() ([]*CachedReading, error) {
 
 	var readings []*CachedReading
 	for _, file := range files {
-		data, err := os.ReadFile(file)
+		data, err := util.ReadFileSafely(file)
 		if err != nil {
 			logger.Warn().Err(err).Str("file", file).Msg("Failed to read cache file")
 			continue
@@ -274,7 +275,7 @@ func (lc *LocalCache) CleanupOld() error {
 	deletedCount := 0
 
 	for _, file := range files {
-		data, err := os.ReadFile(file)
+		data, err := util.ReadFileSafely(file)
 		if err != nil {
 			continue
 		}

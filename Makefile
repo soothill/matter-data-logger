@@ -12,6 +12,7 @@ GOARCH?=$(shell go env GOARCH)
 GOOS?=$(shell go env GOOS)
 GOPATH?=$(shell go env GOPATH)
 GOLANGCI_LINT?=$(GOPATH)/bin/golangci-lint
+GOSEC?=$(GOPATH)/bin/gosec
 
 # Build output directory
 BUILD_DIR=./build
@@ -144,7 +145,7 @@ check: fmt vet lint test ## Run all checks (format, vet, lint, test)
 
 security: install-tools ## Run security checks
 	@echo "Running security checks..."
-	@gosec ./...
+	@$(GOSEC) ./...
 
 ci: tidy deps check security build-all docker-build-multiplatform ## Run CI pipeline
 

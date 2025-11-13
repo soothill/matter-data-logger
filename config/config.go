@@ -54,6 +54,7 @@ import (
 	"time"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/soothill/matter-data-logger/pkg/util"
 	"gopkg.in/yaml.v3"
 )
 
@@ -130,7 +131,7 @@ func Load(path string) (*Config, error) {
 		profile = "default"
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := util.ReadFileSafely(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}

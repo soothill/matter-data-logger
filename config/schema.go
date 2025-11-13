@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/ghodss/yaml"
+	"github.com/soothill/matter-data-logger/pkg/util"
 	"github.com/xeipuuv/gojsonschema"
 )
 
@@ -21,7 +22,7 @@ func ValidateWithSchema(path string) error {
 	}
 	schemaLoader := gojsonschema.NewReferenceLoader("file://" + schemaPath)
 
-	yamlFile, err := os.ReadFile(path)
+	yamlFile, err := util.ReadFileSafely(path)
 	if err != nil {
 		return fmt.Errorf("failed to read config file: %w", err)
 	}
