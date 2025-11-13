@@ -77,11 +77,9 @@ func (m *mockTimeSeriesStorage) Client() interface{} {
 
 // mockNotifier is a mock implementation of Notifier
 type mockNotifier struct {
-	mu                   sync.Mutex
-	influxFailureCalled  bool
-	influxRecoveryCalled bool
-	cacheWarningCalled   bool
-	recoveryChan         chan struct{}
+	mu          sync.Mutex
+	alerts      []string
+	recoveryChan chan struct{}
 }
 
 func newMockNotifier() *mockNotifier {
@@ -90,31 +88,20 @@ func newMockNotifier() *mockNotifier {
 	}
 }
 
-func (m *mockNotifier) SendInfluxDBFailure(_ context.Context, _ error) error {
+func (m *mockNotifier) SendAlert(_ context.Context, severity, title, message string) error {
 	m.mu.Lock()
-	m.influxFailureCalled = true
+	m.alerts = append(m.alerts, title)
 	m.mu.Unlock()
-	return nil
-}
-
-func (m *mockNotifier) SendInfluxDBRecovery(_ context.Context) error {
-	m.mu.Lock()
-	m.influxRecoveryCalled = true
-	m.mu.Unlock()
-	m.recoveryChan <- struct{}{}
-	return nil
-}
-
-func (m *mockNotifier) SendCacheWarning(_ context.Context, _, _ int64) error {
-	m.mu.Lock()
-	m.cacheWarningCalled = true
-	m.mu.Unlock()
+	if title == "✅ InfluxDB Connection Restored" {
+		m.recoveryChan <- struct{}{}
+	}
 	return nil
 }
 
 func (m *mockNotifier) IsEnabled() bool {
 	return true
 }
+
 
 func TestNewLocalCache(t *testing.T) {
 	tempDir := t.TempDir()
@@ -413,7 +400,7 @@ func TestCachingStorage_WriteReading_Success(t *testing.T) {
 	}
 
 	// Ensure no notifications were sent
-	if mockNotif.influxFailureCalled || mockNotif.influxRecoveryCalled || mockNotif.cacheWarningCalled {
+	if len(mockNotif.alerts) > 0 {
 		t.Error("No notifications should be sent on successful write")
 	}
 }
@@ -468,7 +455,7 @@ func TestCachingStorage_WriteReading_CacheFallback(t *testing.T) {
 	}
 
 	// Ensure InfluxDB failure notification was sent
-	if !mockNotif.influxFailureCalled {
+	if len(mockNotif.alerts) != 1 || mockNotif.alerts[0] != "⚠️ InfluxDB Connection Failure" {
 		t.Error("Expected InfluxDB failure notification to be sent")
 	}
 
@@ -503,7 +490,7 @@ func TestCachingStorage_WriteReading_CacheFallback(t *testing.T) {
 
 	// Ensure InfluxDB recovery notification was sent
 	mockNotif.mu.Lock()
-	if !mockNotif.influxRecoveryCalled {
+	if len(mockNotif.alerts) != 2 || mockNotif.alerts[1] != "✅ InfluxDB Connection Restored" {
 		t.Error("Expected InfluxDB recovery notification to be sent")
 	}
 	mockNotif.mu.Unlock()
@@ -548,7 +535,7 @@ func (cs *CachingStorage) triggerReplay() {
 		if cs.notifier != nil && cs.notifier.IsEnabled() {
 			alertCtx, alertCancel := context.WithTimeout(cs.ctx, 5*time.Second)
 			defer alertCancel()
-			if notifyErr := cs.notifier.SendInfluxDBRecovery(alertCtx); notifyErr != nil {
+			if notifyErr := cs.sendInfluxDBRecoveryAlert(alertCtx); notifyErr != nil {
 				logger.Error().Err(notifyErr).Msg("Failed to send InfluxDB recovery alert")
 			}
 		}
@@ -650,7 +637,7 @@ func TestCachingStorage_CacheWarning(t *testing.T) {
 	}
 
 	// Check if cache warning was sent
-	if !mockNotif.cacheWarningCalled {
+	if len(mockNotif.alerts) != 2 || mockNotif.alerts[1] != "⚠️ Local Cache Usage High" {
 		t.Error("Expected cache warning notification to be sent")
 	}
 }
@@ -860,7 +847,7 @@ func TestCachingStorage_WriteBatch_Fallback(t *testing.T) {
 	}
 
 	// Ensure InfluxDB failure notification was sent
-	if !mockNotif.influxFailureCalled {
+	if len(mockNotif.alerts) != 1 || mockNotif.alerts[0] != "⚠️ InfluxDB Connection Failure" {
 		t.Error("Expected InfluxDB failure notification to be sent")
 	}
 }

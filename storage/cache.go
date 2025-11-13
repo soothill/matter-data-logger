@@ -81,7 +81,7 @@
 //
 //	influxDB, _ := storage.NewInfluxDBStorage(url, token, org, bucket)
 //	cache, _ := storage.NewLocalCache("/var/cache/app", 100*1024*1024, 24*time.Hour)
-//	notifier := notifications.NewSlackNotifier(webhookURL)
+//	notifier := slacknotifier.New(webhookURL)
 //
 //	cachingStorage := storage.NewCachingStorage(influxDB, cache, notifier)
 //	defer cachingStorage.Close()
@@ -354,9 +354,7 @@ type CachingStorage struct {
 
 // Notifier defines the interface for sending notifications
 type Notifier interface {
-	SendInfluxDBFailure(ctx context.Context, err error) error
-	SendInfluxDBRecovery(ctx context.Context) error
-	SendCacheWarning(ctx context.Context, cacheSize, maxSize int64) error
+	SendAlert(ctx context.Context, severity, title, message string) error
 	IsEnabled() bool
 }
 
@@ -417,7 +415,7 @@ func (cs *CachingStorage) WriteReading(ctx context.Context, reading *interfaces.
 		if cs.notifier != nil && cs.notifier.IsEnabled() {
 			alertCtx, alertCancel := context.WithTimeout(cs.ctx, 5*time.Second)
 			defer alertCancel()
-			if notifyErr := cs.notifier.SendInfluxDBFailure(alertCtx, err); notifyErr != nil {
+			if notifyErr := cs.sendInfluxDBFailureAlert(alertCtx, err); notifyErr != nil {
 				logger.Error().Err(notifyErr).Msg("Failed to send InfluxDB failure alert")
 			}
 		}
@@ -435,7 +433,7 @@ func (cs *CachingStorage) WriteReading(ctx context.Context, reading *interfaces.
 	if float64(cacheSize)/float64(maxSize) > 0.8 && cs.notifier != nil && cs.notifier.IsEnabled() {
 		alertCtx, alertCancel := context.WithTimeout(cs.ctx, 5*time.Second)
 		defer alertCancel()
-		if notifyErr := cs.notifier.SendCacheWarning(alertCtx, cacheSize, maxSize); notifyErr != nil {
+		if notifyErr := cs.sendCacheWarningAlert(alertCtx, cacheSize, maxSize); notifyErr != nil {
 			logger.Error().Err(notifyErr).Msg("Failed to send cache warning alert")
 		}
 	}
@@ -527,7 +525,7 @@ func (cs *CachingStorage) monitorAndReplay() {
 			if cs.notifier != nil && cs.notifier.IsEnabled() {
 				alertCtx, alertCancel := context.WithTimeout(cs.ctx, 5*time.Second)
 				defer alertCancel()
-				if notifyErr := cs.notifier.SendInfluxDBRecovery(alertCtx); notifyErr != nil {
+				if notifyErr := cs.sendInfluxDBRecoveryAlert(alertCtx); notifyErr != nil {
 					logger.Error().Err(notifyErr).Msg("Failed to send InfluxDB recovery alert")
 				}
 			}
@@ -586,4 +584,21 @@ func (cs *CachingStorage) replayCachedData() error {
 		Msg("Finished replaying cached readings")
 
 	return nil
+}
+
+func (cs *CachingStorage) sendInfluxDBFailureAlert(ctx context.Context, err error) error {
+	return cs.notifier.SendAlert(ctx, "danger", "⚠️ InfluxDB Connection Failure",
+		fmt.Sprintf("Failed to connect to InfluxDB: %v\nData will be cached locally until connection is restored.", err))
+}
+
+func (cs *CachingStorage) sendInfluxDBRecoveryAlert(ctx context.Context) error {
+	return cs.notifier.SendAlert(ctx, "good", "✅ InfluxDB Connection Restored",
+		"Connection to InfluxDB has been restored. Cached data will be replayed.")
+}
+
+func (cs *CachingStorage) sendCacheWarningAlert(ctx context.Context, cacheSize, maxSize int64) error {
+	percentage := float64(cacheSize) / float64(maxSize) * 100
+	return cs.notifier.SendAlert(ctx, "warning", "⚠️ Local Cache Usage High",
+		fmt.Sprintf("Cache size: %d bytes (%.1f%% of max %d bytes)\nInfluxDB may be unavailable for an extended period.",
+			cacheSize, percentage, maxSize))
 }
