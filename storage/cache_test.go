@@ -77,8 +77,8 @@ func (m *mockTimeSeriesStorage) Client() interface{} {
 
 // mockNotifier is a mock implementation of Notifier
 type mockNotifier struct {
-	mu          sync.Mutex
-	alerts      []string
+	mu           sync.Mutex
+	alerts       []string
 	recoveryChan chan struct{}
 }
 
@@ -88,7 +88,7 @@ func newMockNotifier() *mockNotifier {
 	}
 }
 
-func (m *mockNotifier) SendAlert(_ context.Context, severity, title, message string) error {
+func (m *mockNotifier) SendAlert(_ context.Context, _, title, _ string) error {
 	m.mu.Lock()
 	m.alerts = append(m.alerts, title)
 	m.mu.Unlock()
@@ -101,7 +101,6 @@ func (m *mockNotifier) SendAlert(_ context.Context, severity, title, message str
 func (m *mockNotifier) IsEnabled() bool {
 	return true
 }
-
 
 func TestNewLocalCache(t *testing.T) {
 	tempDir := t.TempDir()

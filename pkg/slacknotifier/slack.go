@@ -56,7 +56,7 @@ type Notifier struct {
 // Message represents a Slack webhook message payload
 type Message struct {
 	Text        string       `json:"text,omitempty"`
-	Blocks      []Block `json:"blocks,omitempty"`
+	Blocks      []Block      `json:"blocks,omitempty"`
 	Attachments []Attachment `json:"attachments,omitempty"`
 }
 
