@@ -342,7 +342,7 @@ func (lc *LocalCache) generateFilename(attemptID string) string {
 type CachingStorage struct {
 	storage             interfaces.TimeSeriesStorage
 	cache               *LocalCache
-	notifier            Notifier
+	notifier            interfaces.Notifier
 	cb                  *CircuitBreaker
 	ctx                 context.Context
 	cancel              context.CancelFunc
@@ -350,12 +350,6 @@ type CachingStorage struct {
 	cacheEnabled        bool
 	cacheMutex          sync.RWMutex
 	healthCheckInterval time.Duration
-}
-
-// Notifier defines the interface for sending notifications
-type Notifier interface {
-	SendAlert(ctx context.Context, severity, title, message string) error
-	IsEnabled() bool
 }
 
 // CachingStorageOption defines a functional option for configuring CachingStorage.
@@ -369,7 +363,7 @@ func WithHealthCheckInterval(interval time.Duration) CachingStorageOption {
 }
 
 // NewCachingStorage creates a new caching storage wrapper
-func NewCachingStorage(storage interfaces.TimeSeriesStorage, cache *LocalCache, notifier Notifier, opts ...CachingStorageOption) *CachingStorage {
+func NewCachingStorage(storage interfaces.TimeSeriesStorage, cache *LocalCache, notifier interfaces.Notifier, opts ...CachingStorageOption) *CachingStorage {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	cs := &CachingStorage{

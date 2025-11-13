@@ -22,7 +22,6 @@ import (
 	"github.com/soothill/matter-data-logger/pkg/interfaces"
 	"github.com/soothill/matter-data-logger/pkg/logger"
 	"github.com/soothill/matter-data-logger/pkg/metrics"
-	"github.com/soothill/matter-data-logger/pkg/notifications"
 	"github.com/soothill/matter-data-logger/pkg/slacknotifier"
 	"github.com/soothill/matter-data-logger/storage"
 	"golang.org/x/time/rate"
@@ -146,7 +145,7 @@ func (a *App) initializeComponents() (*slacknotifier.Notifier, *storage.CachingS
 	} else {
 		logger.Info().Msg("Slack notifications disabled (no webhook URL configured)")
 	}
-	notifierAdapter := slacknotifier.NewSlackNotifierAdapter(notifier)
+	notifierAdapter := slacknotifier.NewAdapter(notifier)
 
 	// Initialize InfluxDB storage
 	var influxDB *storage.InfluxDBStorage
