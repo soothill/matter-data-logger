@@ -44,9 +44,34 @@ jobs:
     - name: Run tests
       run: make test
 
-  build-linux-amd64:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ${{ matrix.os }}
     needs: [lint, security, test]
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm
+            goarm: "7"
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+          - os: windows-latest
+            goos: windows
+            goarch: arm64
     steps:
     - uses: actions/checkout@v3
     - name: Set up Go
@@ -54,83 +79,28 @@ jobs:
       with:
         go-version: '1.21'
     - name: Run build
-      run: GOOS=linux GOARCH=amd64 make build
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        GOARM: ${{ matrix.goarm }}
+      run: make build
 
-  build-linux-arm64:
-    runs-on: ubuntu-latest
-    needs: [lint, security, test]
-    steps:
-    - uses: actions/checkout@v3
-    - name: Set up Go
-      uses: actions/setup-go@v3
-      with:
-        go-version: '1.21'
-    - name: Run build
-      run: GOOS=linux GOARCH=arm64 make build
-
-  build-linux-armv7:
-    runs-on: ubuntu-latest
-    needs: [lint, security, test]
-    steps:
-    - uses: actions/checkout@v3
-    - name: Set up Go
-      uses: actions/setup-go@v3
-      with:
-        go-version: '1.21'
-    - name: Run build
-      run: GOOS=linux GOARCH=arm GOARM=7 make build
-
-  build-darwin-amd64:
-    runs-on: macos-latest
-    needs: [lint, security, test]
-    steps:
-    - uses: actions/checkout@v3
-    - name: Set up Go
-      uses: actions/setup-go@v3
-      with:
-        go-version: '1.21'
-    - name: Run build
-      run: GOOS=darwin GOARCH=amd64 make build
-
-  build-darwin-arm64:
-    runs-on: macos-latest
-    needs: [lint, security, test]
-    steps:
-    - uses: actions/checkout@v3
-    - name: Set up Go
-      uses: actions/setup-go@v3
-      with:
-        go-version: '1.21'
-    - name: Run build
-      run: GOOS=darwin GOARCH=arm64 make build
-
-  build-windows-amd64:
-    runs-on: windows-latest
-    needs: [lint, security, test]
-    steps:
-    - uses: actions/checkout@v3
-    - name: Set up Go
-      uses: actions/setup-go@v3
-      with:
-        go-version: '1.21'
-    - name: Run build
-      run: GOOS=windows GOARCH=amd64 make build
-
-  build-windows-arm64:
-    runs-on: windows-latest
-    needs: [lint, security, test]
-    steps:
-    - uses: actions/checkout@v3
-    - name: Set up Go
-      uses: actions/setup-go@v3
-      with:
-        go-version: '1.21'
-    - name: Run build
-      run: GOOS=windows GOARCH=arm64 make build
-
-  docker-build-linux-amd64:
-    runs-on: ubuntu-latest
-    needs: [build-linux-amd64]
+  docker-build:
+    runs-on: ${{ matrix.os }}
+    needs: [build]
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux/amd64
+          - os: ubuntu-latest
+            platform: linux/arm64
+          - os: ubuntu-latest
+            platform: linux/arm/v7
+          - os: windows-latest
+            platform: windows/amd64
+          - os: windows-latest
+            platform: windows/arm64
     steps:
     - uses: actions/checkout@v3
     - name: Set up QEMU
@@ -141,101 +111,5 @@ jobs:
       uses: docker/build-push-action@v4
       with:
         context: .
-        platforms: linux/amd64
-        push: false
-
-  docker-build-linux-arm64:
-    runs-on: ubuntu-latest
-    needs: [build-linux-arm64]
-    steps:
-    - uses: actions/checkout@v3
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
-    - name: Build and push
-      uses: docker/build-push-action@v4
-      with:
-        context: .
-        platforms: linux/arm64
-        push: false
-
-  docker-build-linux-armv7:
-    runs-on: ubuntu-latest
-    needs: [build-linux-armv7]
-    steps:
-    - uses: actions/checkout@v3
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
-    - name: Build and push
-      uses: docker/build-push-action@v4
-      with:
-        context: .
-        platforms: linux/arm/v7
-        push: false
-
-  docker-build-windows-amd64:
-    runs-on: windows-latest
-    needs: [build-windows-amd64]
-    steps:
-    - uses: actions/checkout@v3
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
-    - name: Build and push
-      uses: docker/build-push-action@v4
-      with:
-        context: .
-        platforms: windows/amd64
-        push: false
-
-  docker-build-windows-arm64:
-    runs-on: windows-latest
-    needs: [build-windows-arm64]
-    steps:
-    - uses: actions/checkout@v3
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
-    - name: Build and push
-      uses: docker/build-push-action@v4
-      with:
-        context: .
-        platforms: windows/arm64
-        push: false
-
-  docker-build-darwin-amd64:
-    runs-on: macos-latest
-    needs: [build-darwin-amd64]
-    steps:
-    - uses: actions/checkout@v3
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
-    - name: Build and push
-      uses: docker/build-push-action@v4
-      with:
-        context: .
-        platforms: darwin/amd64
-        push: false
-
-  docker-build-darwin-arm64:
-    runs-on: macos-latest
-    needs: [build-darwin-arm64]
-    steps:
-    - uses: actions/checkout@v3
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
-    - name: Build and push
-      uses: docker/build-push-action@v4
-      with:
-        context: .
-        platforms: darwin/arm64
+        platforms: ${{ matrix.platform }}
         push: false
